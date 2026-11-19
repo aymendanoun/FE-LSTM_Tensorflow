@@ -20,6 +20,9 @@ material:
   # legacy     : LSTM state advances at every Newton-Raphson iteration (thesis behaviour)
   # consistent : LSTM state advances once per converged time increment
   state_update: legacy
+  # network           : tangent matrix from the tangent network (thesis)
+  # finite_difference : tangent from the stress network by finite differences (diagnostic)
+  tangent: network
   E: 113800.0
   nu: 0.342
   alpha: 0.86e-5

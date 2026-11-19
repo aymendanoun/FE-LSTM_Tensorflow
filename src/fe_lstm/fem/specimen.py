@@ -38,7 +38,11 @@ def build_material(cfg: dict, root: Path):
     mat = cfg["material"]
     kind = mat["type"]
     if kind == "lstm":
-        return LSTMConstitutiveLaw(root / mat["weights_dir"], state_update=mat["state_update"])
+        return LSTMConstitutiveLaw(
+            root / mat["weights_dir"],
+            state_update=mat["state_update"],
+            tangent=mat.get("tangent", "network"),
+        )
     if kind == "elastic":
         return fd.constitutivelaw.ElasticIsotrop(mat["E"], mat["nu"])
     if kind == "eliso":
@@ -70,6 +74,10 @@ def run(cfg: dict, root: str | Path = ".", material=None) -> dict:
         material = build_material(cfg, root)
 
     weakform = fd.weakform.StressEquilibrium(material, nlgeom=False)
+    if not getattr(material, "symmetric_tangent", True):
+        # fedoo assumes a symmetric stiffness in small strain and assembles one triangle only:
+        # an unsymmetric tangent (finite differences) must be assembled in full.
+        weakform.assembly_options["assume_sym"] = False
     assembly = fd.Assembly.create(weakform, mesh, cfg["mesh"]["elm_type"])
     pb = fd.problem.NonLinear(assembly)
 

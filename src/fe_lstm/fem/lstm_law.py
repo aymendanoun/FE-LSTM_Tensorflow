@@ -52,6 +52,8 @@ _UPPER = [(i, j) for i in range(6) for j in range(i + 1, 6)]
 TANGENT_INDEX = _DIAG + _UPPER
 
 _STATE_MODES = ("legacy", "consistent")
+_TANGENT_MODES = ("network", "finite_difference")
+FD_STEP = 1e-6  # strain perturbation for the finite-difference tangent
 
 
 def tangent_from_vector(y: np.ndarray) -> np.ndarray:
@@ -79,34 +81,57 @@ class LSTMConstitutiveLaw(Mechanical3D):
     state_update : {"legacy", "consistent"}
         How the recurrent state is handled across Newton-Raphson iterations
         (see module docstring).
+    tangent : {"network", "finite_difference"}
+        ``"network"`` (thesis): tangent matrix predicted by the tangent network.
+        ``"finite_difference"``: tangent computed from the stress network by forward finite
+        differences, always consistent with the predicted stress (6 extra stress evaluations
+        per update, the tangent network is not needed). Useful to diagnose convergence issues.
     name : str
         Name of the constitutive law.
     """
 
-    def __init__(self, weights_dir: str | Path, state_update: str = "legacy", name: str = ""):
+    def __init__(
+        self,
+        weights_dir: str | Path,
+        state_update: str = "legacy",
+        tangent: str = "network",
+        name: str = "",
+    ):
         weights_dir = Path(weights_dir)
         stress_net = LSTMSurrogate(weights_dir / "weights_scaler_stress", "scaling_stress.npz")
-        tangent_net = LSTMSurrogate(weights_dir / "weights_scaler_Lt", "scaling_Lt.npz")
-        self._setup(stress_net, tangent_net, state_update, name)
+        tangent_net = None
+        if tangent == "network":
+            tangent_net = LSTMSurrogate(weights_dir / "weights_scaler_Lt", "scaling_Lt.npz")
+        self._setup(stress_net, tangent_net, state_update, tangent, name)
 
     @classmethod
-    def from_networks(cls, stress_net, tangent_net, state_update: str = "legacy", name: str = ""):
+    def from_networks(
+        cls, stress_net, tangent_net=None, state_update: str = "legacy", tangent: str = "network", name: str = ""
+    ):
         """Build the law from network objects (``LSTMSurrogate`` or any object with the same
         ``n_inputs``, ``n_outputs``, ``n_lstm_layers``, ``zero_state`` and ``step``)."""
         law = cls.__new__(cls)
-        law._setup(stress_net, tangent_net, state_update, name)
+        law._setup(stress_net, tangent_net, state_update, tangent, name)
         return law
 
-    def _setup(self, stress_net, tangent_net, state_update, name):
+    def _setup(self, stress_net, tangent_net, state_update, tangent, name):
         if state_update not in _STATE_MODES:
             raise ValueError(f"state_update must be one of {_STATE_MODES}, got {state_update!r}")
+        if tangent not in _TANGENT_MODES:
+            raise ValueError(f"tangent must be one of {_TANGENT_MODES}, got {tangent!r}")
         Mechanical3D.__init__(self, name=name)
         if stress_net.n_inputs != 6 or stress_net.n_outputs != 6:
             raise ValueError("The stress network must map 6 strain components to 6 stresses.")
-        if tangent_net.n_inputs != 6 or tangent_net.n_outputs != 21:
+        if tangent == "network" and (
+            tangent_net is None or tangent_net.n_inputs != 6 or tangent_net.n_outputs != 21
+        ):
             raise ValueError("The tangent network must map 6 strain components to 21 terms.")
         self.stress_net = stress_net
-        self.tangent_net = tangent_net
+        self.tangent_net = tangent_net if tangent == "network" else None
+        self.tangent = tangent
+        # The network tangent (21 terms) is symmetric by construction; the finite-difference
+        # tangent is not, and fedoo assembles only one triangle when assume_sym is True.
+        self.symmetric_tangent = tangent == "network"
         self.state_update = state_update
         self._state = None
         self._c_start = None
@@ -116,8 +141,17 @@ class LSTMConstitutiveLaw(Mechanical3D):
     def _run(self, strain: np.ndarray, state_stress, state_tangent):
         """Evaluate both networks for strain of shape (n_points, 6)."""
         stress, new_state_stress = self.stress_net.step(strain, state_stress)
-        y_tangent, new_state_tangent = self.tangent_net.step(strain, state_tangent)
-        return stress, tangent_from_vector(y_tangent), new_state_stress, new_state_tangent
+        if self.tangent == "network":
+            y_tangent, new_state_tangent = self.tangent_net.step(strain, state_tangent)
+            return stress, tangent_from_vector(y_tangent), new_state_stress, new_state_tangent
+        # d(stress)/d(strain) of the same step (same incoming recurrent state)
+        lt = np.empty((6, 6, strain.shape[0]))
+        for k in range(6):
+            perturbed = strain.copy()
+            perturbed[:, k] += FD_STEP
+            stress_k, _ = self.stress_net.step(perturbed, state_stress)
+            lt[:, k, :] = ((stress_k - stress) / FD_STEP).T
+        return stress, lt, new_state_stress, []
 
     @staticmethod
     def _store(assembly, stress, tangent):
@@ -133,7 +167,7 @@ class LSTMConstitutiveLaw(Mechanical3D):
         n_points = assembly.n_gauss_points
         zero_strain = np.zeros((n_points, 6))
         state_stress = self.stress_net.zero_state(n_points)
-        state_tangent = self.tangent_net.zero_state(n_points)
+        state_tangent = self.tangent_net.zero_state(n_points) if self.tangent_net else []
 
         if self.state_update == "legacy":
             # legacy: memory_start was saved *before* the initial zero-strain evaluation

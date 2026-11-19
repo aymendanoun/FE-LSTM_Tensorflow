@@ -164,3 +164,21 @@ def test_runs_in_fedoo_with_random_networks(weights_dir):
     pb.nlsolve(dt=0.25, tmax=1, update_dt=False, print_info=0)
     s = np.asarray(asm.sv["Stress"])
     assert s.shape == (6, asm.n_gauss_points) and np.all(np.isfinite(s))
+
+
+# ------------------------------------------------------------ finite-difference tangent
+def test_finite_difference_tangent_matches_linear_map():
+    H = isotropic_stiffness()
+    H[0, 4] += 500.0  # unsymmetric on purpose
+    net = LinearElasticNet("stress")
+    net.H = H
+    law = LSTMConstitutiveLaw.from_networks(net, None, "consistent", tangent="finite_difference")
+    assert law.symmetric_tangent is False
+    strain = np.random.default_rng(3).uniform(-0.01, 0.01, (4, 6))
+    _, lt, _, _ = law._run(strain, net.zero_state(4), [])
+    for p in range(4):
+        np.testing.assert_allclose(lt[:, :, p], H, rtol=1e-6, atol=1e-3)
+
+
+def test_network_tangent_is_flagged_symmetric(weights_dir):
+    assert LSTMConstitutiveLaw(weights_dir).symmetric_tangent is True

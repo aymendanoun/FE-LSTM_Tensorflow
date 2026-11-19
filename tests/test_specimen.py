@@ -33,3 +33,12 @@ def test_specimen_runs_with_lstm_law(tmp_path, weights_dir):
     cfg["solver"].update(tol_nr=10.0)  # random weights: wiring smoke test only
     out = run(cfg, ROOT)
     assert np.isfinite(np.asarray(out["assembly"].sv["Stress"])).all()
+
+
+def test_unsymmetric_tangent_is_assembled_in_full(tmp_path, weights_dir):
+    """fedoo assembles one triangle when assume_sym is True: the FD tangent must disable it."""
+    cfg = short_config(tmp_path, "lstm")
+    cfg["material"].update(weights_dir=str(weights_dir), tangent="finite_difference")
+    cfg["solver"].update(tol_nr=10.0)
+    out = run(cfg, ROOT)
+    assert out["assembly"].assume_sym is False

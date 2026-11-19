@@ -6,6 +6,7 @@ Usage (from the repository root):
     python scripts/run_fe.py
     python scripts/run_fe.py --material epicp                # simcoon reference instead of LSTM
     python scripts/run_fe.py --weights path/to/weights_scaler_3D --state-update consistent
+    python scripts/run_fe.py --tangent finite_difference     # tangent from the stress network
 """
 
 import argparse
@@ -24,6 +25,8 @@ def main():
     parser.add_argument("--material", choices=["lstm", "elastic", "eliso", "epicp"])
     parser.add_argument("--weights", help="folder with weights_scaler_stress/ and weights_scaler_Lt/")
     parser.add_argument("--state-update", choices=["legacy", "consistent"])
+    parser.add_argument("--tangent", choices=["network", "finite_difference"])
+    parser.add_argument("--update-dt", action="store_true", help="let the solver cut the time step")
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -34,6 +37,10 @@ def main():
         cfg["material"]["weights_dir"] = str(Path(args.weights).resolve())
     if args.state_update:
         cfg["material"]["state_update"] = args.state_update
+    if args.tangent:
+        cfg["material"]["tangent"] = args.tangent
+    if args.update_dt:
+        cfg["solver"]["update_dt"] = True
     if cfg["material"]["type"] != "lstm":
         cfg["output"]["name"] = f"{cfg['material']['type']}_specimen_with_holes_tensile"
 

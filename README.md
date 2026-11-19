@@ -87,6 +87,11 @@ Results are written to `results/specimen_with_holes_tensile/` (`.fdh5`, plus `.v
   restarted. `state_update: legacy` (default) keeps this behaviour; `state_update: consistent`
   advances the LSTM exactly once per converged increment, as in the training sequences.
 - The weights are read once into memory instead of from disk at every call (same numbers).
+- **Tangent options.** `tangent: network` (default) uses the tangent network, symmetric by
+  construction. `tangent: finite_difference` differentiates the stress network instead (always
+  consistent with the stress, no tangent weights needed). That tangent is unsymmetric, and fedoo
+  1.x assembles only one triangle of the stiffness in small strain (`assume_sym`), so the script
+  switches to full assembly for it.
 - **Newton-Raphson criterion.** The 2022 "Displacement" error was `max|correction| / max|total
   displacement|`; fedoo 1.x normalises by the increment, which is much stricter for the same
   tolerance (the thesis tolerance 0.05 then fails). `nr_criterion: LegacyDisplacement` (default,
