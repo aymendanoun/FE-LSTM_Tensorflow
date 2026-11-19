@@ -1,0 +1,22 @@
+# Environment used during the PhD (2019-2022), to reproduce the original results.
+# TODO: pin the exact versions. Check what is available with:
+#   mamba search -c set3mah fedoo
+#   mamba search -c set3mah simcoon
+name: felstm-legacy
+channels:
+  - conda-forge
+  - set3mah
+dependencies:
+  - python=3.9            # TODO: confirm
+  - numpy<2
+  - scipy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - h5py
+  - pytest
+  - set3mah::simcoon      # TODO: pin, e.g. set3mah::simcoon=1.x
+  - set3mah::fedoo        # TODO: pin, e.g. set3mah::fedoo=0.x
+  - pip
+  - pip:
+      - tensorflow==2.8.*  # TODO: confirm the version used for the thesis

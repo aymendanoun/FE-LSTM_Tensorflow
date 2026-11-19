@@ -1,0 +1,24 @@
+# Default configuration. Fill in values from the legacy scripts.
+seed: 0
+
+data:
+  output_dir: data/database
+  n_samples: null        # number of loading paths
+  n_steps: null          # increments per loading path
+
+model:
+  lstm_units: null
+  n_layers: null
+  sequence_length: null
+
+training:
+  epochs: null
+  batch_size: null
+  learning_rate: null
+  validation_split: 0.2
+  output_dir: models
+
+fe:
+  mesh: null
+  boundary_conditions: null
+  n_increments: null
