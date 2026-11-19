@@ -55,11 +55,38 @@ python scripts/run_fe.py   --config configs/default.yaml
 
 ## Status
 
-- [ ] Legacy environment pinned and original results reproduced
-- [ ] Database generation ported
+- [x] Fedoo coupling ported to fedoo 1.x (`src/fe_lstm/fem/`, `scripts/run_fe.py`)
+- [ ] FE-LSTM run with the trained thesis weights and compared to the thesis results
 - [ ] Training ported to Keras 3
-- [ ] Fedoo coupling ported to fedoo 1.x
-- [ ] Regression tests passing
+- [ ] Database generation ported (fedoo 1.x has no path-driven unit-cell solver any more)
+- [ ] Legacy environment pinned and original results reproduced
+
+## Running the FE-LSTM simulation
+
+The trained weights are not in git (`*.npz` is ignored). Copy the folder exported by
+`legacy/training/LSTM_model_Get_weights_scaler_*.py` (the one holding `weights_scaler_stress/`
+and `weights_scaler_Lt/`) to `models/weights_scaler_3D/`, or pass its path with `--weights`:
+
+```bash
+python scripts/run_fe.py                                  # FE-LSTM, settings from configs/
+python scripts/run_fe.py --weights /path/to/weights_scaler_3D
+python scripts/run_fe.py --material epicp                 # simcoon EPICP reference
+python scripts/run_fe.py --state-update consistent        # see "Porting notes"
+```
+
+Results are written to `results/specimen_with_holes_tensile/` (`.fdh5`, plus `.vtk` for ParaView).
+
+## Porting notes (fedoo 2022 -> fedoo 1.1)
+
+- The LSTM inference was already pure NumPy (weights exported from Keras), so TensorFlow is only
+  needed for training. `src/fe_lstm/model/numpy_lstm.py` is tested against a Keras 3 model.
+- The law (`src/fe_lstm/fem/lstm_law.py`) now derives from fedoo's `Mechanical3D`. The Voigt
+  convention is unchanged: `[e_xx, e_yy, e_zz, g_xy, g_xz, g_yz]`, engineering shear.
+- **Recurrent state and Newton-Raphson.** In the 2022 code the LSTM state advanced at every
+  Newton-Raphson iteration, and only the cell state `c` was restored when an increment was
+  restarted. `state_update: legacy` (default) keeps this behaviour; `state_update: consistent`
+  advances the LSTM exactly once per converged increment, as in the training sequences.
+- The weights are read once into memory instead of from disk at every call (same numbers).
 
 ## License
 

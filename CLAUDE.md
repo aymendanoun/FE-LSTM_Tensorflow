@@ -12,6 +12,14 @@ up to 99% faster.
 2. `src/fe_lstm/model/`: define, train and export the LSTM (TensorFlow / Keras 3)
 3. `src/fe_lstm/fem/`: call the LSTM at each integration point / increment inside Fedoo
 
+## Port status
+- Done: FE coupling. `src/fe_lstm/model/numpy_lstm.py` (NumPy LSTM inference),
+  `src/fe_lstm/fem/lstm_law.py` (fedoo 1.x law, `state_update` = "legacy" | "consistent"),
+  `src/fe_lstm/fem/specimen.py` + `scripts/run_fe.py` + `configs/specimen_with_holes_tensile.yaml`.
+- To do: training (Keras 3, pandas 2: `DataFrame.append` was removed) and database generation
+  (legacy uses `Homogen.GetResultsUnitCell`, which fedoo 1.x no longer has).
+- Trained weights are not in git; tests use synthetic weights (`tests/conftest.py`).
+
 ## Rules
 - **Never modify anything in `legacy/`.** It holds the original PhD scripts and is the reference.
 - Port code into `src/fe_lstm/`. Keep the scientific behaviour identical (same architecture, scaling,
