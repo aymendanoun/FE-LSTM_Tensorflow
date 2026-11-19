@@ -25,6 +25,9 @@ def test_specimen_runs(tmp_path, material):
     disp = out["problem"].get_disp()
     assert np.isfinite(disp).all()
     assert np.isclose(disp[0].max(), 0.04)  # imposed DispX, fully applied at tmax
+    curve = out["curve"]  # time, ux, Fx: one row per increment + origin
+    assert curve.shape == (3, 3) and np.isclose(curve[-1, 1], 0.04)
+    assert (tmp_path / "RNN_specimen_with_holes_tensile_force_displacement.csv").exists()
 
 
 def test_specimen_runs_with_lstm_law(tmp_path, weights_dir):

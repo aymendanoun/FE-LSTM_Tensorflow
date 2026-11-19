@@ -101,6 +101,14 @@ def run(cfg: dict, root: str | Path = ".", material=None) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     results = pb.add_output(str(out_dir / out["name"]), assembly, out["fields"])
 
+    # global response: imposed displacement and reaction force on the right face
+    curve = [(0.0, 0.0, 0.0)]
+
+    def record(problem):
+        ux = problem.get_disp("DispX")[right].mean()
+        fx = problem.get_ext_forces("DispX")[right].sum()
+        curve.append((problem.time, ux, fx))
+
     pb.nlsolve(
         dt=sol["dt"],
         tmax=sol["tmax"],
@@ -108,10 +116,36 @@ def run(cfg: dict, root: str | Path = ".", material=None) -> dict:
         tol_nr=sol["tol_nr"],
         max_subiter=sol["max_subiter"],
         print_info=sol.get("print_info", 1),
+        callback=record,
     )
     elapsed = perf_counter() - start
 
-    if out.get("vtk", False):
-        results.to_vtk(str(out_dir / out["name"]), "Node")
+    curve = np.array(curve)
+    np.savetxt(
+        out_dir / f"{out['name']}_force_displacement.csv",
+        curve,
+        delimiter=",",
+        header="time,ux_right,reaction_fx_right",
+        comments="",
+    )
 
-    return {"problem": pb, "assembly": assembly, "results": results, "time": elapsed}
+    if out.get("vtk", False):
+        write_vtk_series(results, out_dir / out["name"])
+
+    return {
+        "problem": pb,
+        "assembly": assembly,
+        "results": results,
+        "curve": curve,
+        "time": elapsed,
+    }
+
+
+def write_vtk_series(results, base: Path) -> None:
+    """Write one .vtk file per saved increment (base_000.vtk, base_001.vtk, ...).
+
+    ParaView opens the numbered files as a single time series.
+    """
+    for i in range(results.n_iter):
+        results.load(i)
+        results.to_vtk(f"{base}_{i:03d}.vtk")
