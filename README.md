@@ -63,9 +63,9 @@ python scripts/run_fe.py   --config configs/default.yaml
 
 ## Running the FE-LSTM simulation
 
-The trained weights are not in git (`*.npz` is ignored). Copy the folder exported by
-`legacy/training/LSTM_model_Get_weights_scaler_*.py` (the one holding `weights_scaler_stress/`
-and `weights_scaler_Lt/`) to `models/weights_scaler_3D/`, or pass its path with `--weights`:
+The trained weights are not in git (`*.npz` is ignored). By default the script reads them from
+`legacy/fedoo_coupling/weights_scaler_3D/` (holding `weights_scaler_stress/` and
+`weights_scaler_Lt/`), where the 2022 script expected them. Use `--weights` for another folder:
 
 ```bash
 python scripts/run_fe.py                                  # FE-LSTM, settings from configs/

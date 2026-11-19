@@ -13,10 +13,10 @@ material:
   # epicp   : simcoon EPICP elastoplasticity (legacy mat = 1)
   type: lstm
   # Folder holding weights_scaler_stress/ and weights_scaler_Lt/ exported by
-  # legacy/training/LSTM_model_Get_weights_scaler_*.py (not in git: *.npz is ignored).
-  # The legacy script used ./weights_scaler_3D (ConstitutiveLaw_LSTM) or
-  # ./weights_scaler_3D_DenseMaterial (ConstitutiveLaw_LSTM_DenseMaterial).
-  weights_dir: models/weights_scaler_3D
+  # legacy/training/LSTM_model_Get_weights_scaler_*.py: the thesis weights, kept next to the
+  # legacy script (not in git: *.npz is ignored). The DenseMaterial variant used
+  # ./weights_scaler_3D_DenseMaterial instead.
+  weights_dir: legacy/fedoo_coupling/weights_scaler_3D
   # legacy     : LSTM state advances at every Newton-Raphson iteration (thesis behaviour)
   # consistent : LSTM state advances once per converged time increment
   state_update: legacy
