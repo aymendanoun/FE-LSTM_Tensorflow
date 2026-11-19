@@ -1,0 +1,20 @@
+name: felstm
+channels:
+  - conda-forge
+  - set3mah
+dependencies:
+  - python=3.12
+  - numpy>=2.0
+  - scipy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - pyvista
+  - h5py
+  - pytest
+  - jupyterlab
+  - set3mah::simcoon
+  - set3mah::fedoo
+  - pip
+  - pip:
+      - tensorflow
