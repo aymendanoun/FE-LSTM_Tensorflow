@@ -15,7 +15,7 @@ legacy (2022)                                          fedoo 1.x
 ``WeakForm.InternalForce(law, nlgeom=False)``          ``fd.weakform.StressEquilibrium(law, nlgeom=False)``
 ``Assembly.Create(law, meshID, "tet4")``               ``fd.Assembly.create(weakform, mesh, "tet4")``
 ``Problem.NonLinearStatic("Assembling")``              ``fd.problem.NonLinear(assembly)``
-``Problem.SetNewtonRaphsonErrorCriterion("Displ..")``  ``pb.set_nr_criterion("Displacement", tol=...)``
+``Problem.SetNewtonRaphsonErrorCriterion("Displ..")``  ``use_legacy_displacement_criterion(pb)``  
 ``Problem.BoundaryCondition("Dirichlet","DispX",..)``  ``pb.bc.add("Dirichlet", nodes, "DispX", value)``
 ``Problem.AddOutput(..., file_format="vtk")``          ``pb.add_output(...)`` + ``results.to_vtk``
 ``Problem.NLSolve(dt, tmax, update_dt, ToleranceNR)``  ``pb.nlsolve(dt, tmax, update_dt, tol_nr)``
@@ -30,6 +30,7 @@ from time import perf_counter
 import fedoo as fd
 import numpy as np
 
+from fe_lstm.fem.legacy_nr import use_legacy_displacement_criterion
 from fe_lstm.fem.lstm_law import LSTMConstitutiveLaw
 
 
@@ -73,7 +74,12 @@ def run(cfg: dict, root: str | Path = ".", material=None) -> dict:
     pb = fd.problem.NonLinear(assembly)
 
     sol = cfg["solver"]
-    pb.set_nr_criterion(sol["nr_criterion"], tol=sol["tol_nr"], max_subiter=sol["max_subiter"])
+    criterion = sol["nr_criterion"]
+    if criterion == "LegacyDisplacement":  # 2022 fedoo definition, see legacy_nr.py
+        pb.set_nr_criterion("Displacement", tol=sol["tol_nr"], max_subiter=sol["max_subiter"])
+        use_legacy_displacement_criterion(pb)
+    else:  # fedoo 1.x criteria: "Displacement", "Force" or "Work"
+        pb.set_nr_criterion(criterion, tol=sol["tol_nr"], max_subiter=sol["max_subiter"])
 
     crd = mesh.nodes
     left = mesh.find_nodes("X", crd[:, 0].min())

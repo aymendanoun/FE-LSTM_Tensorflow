@@ -35,7 +35,10 @@ solver:
   dt: 0.01
   tmax: 1.0
   update_dt: false
-  nr_criterion: Displacement
+  # LegacyDisplacement : 2022 fedoo definition, error = max|correction| / max|total displacement|
+  # Displacement       : fedoo 1.x definition, normalised by the increment (much stricter)
+  # Force, Work        : fedoo 1.x criteria
+  nr_criterion: LegacyDisplacement
   tol_nr: 0.05
   max_subiter: 6            # legacy default
 
