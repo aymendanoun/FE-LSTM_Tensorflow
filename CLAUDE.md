@@ -12,12 +12,32 @@ up to 99% faster.
 2. `src/fe_lstm/model/`: define, train and export the LSTM (TensorFlow / Keras 3)
 3. `src/fe_lstm/fem/`: call the LSTM at each integration point / increment inside Fedoo
 
-## Port status
-- Done: FE coupling. `src/fe_lstm/model/numpy_lstm.py` (NumPy LSTM inference),
-  `src/fe_lstm/fem/lstm_law.py` (fedoo 1.x law, `state_update` = "legacy" | "consistent"),
-  `src/fe_lstm/fem/specimen.py` + `scripts/run_fe.py` + `configs/specimen_with_holes_tensile.yaml`.
-- To do: training (Keras 3, pandas 2: `DataFrame.append` was removed) and database generation
-  (legacy uses `Homogen.GetResultsUnitCell`, which fedoo 1.x no longer has).
+## Port status (end of session 2026-11-19, transcript in docs/claude_sessions/)
+- Done: FE coupling. `src/fe_lstm/model/numpy_lstm.py` (NumPy LSTM inference, tested against
+  Keras 3), `src/fe_lstm/fem/lstm_law.py` (fedoo 1.x law), `src/fe_lstm/fem/legacy_nr.py`
+  (2022 Newton criterion), `src/fe_lstm/fem/specimen.py` + `scripts/run_fe.py` +
+  `configs/specimen_with_holes_tensile.yaml`, `scripts/plot_results.py`. 24 tests pass.
+- Law options: `state_update` = "legacy" (LSTM steps at every Newton iteration, thesis code) |
+  "consistent" (one step per converged increment); `tangent` = "network" (tangent LSTM, 21
+  terms, symmetric) | "finite_difference" (derivative of the stress LSTM, unsymmetric).
+- fedoo 1.x assembles one triangle of K in small strain (`assume_sym=True`): unsymmetric
+  tangents need `weakform.assembly_options["assume_sym"] = False` (done in specimen.py).
+- Results so far (thesis stress weights, on Aymen's Mac and here):
+  - `--tangent finite_difference --state-update consistent`: converges, 100 increments,
+    ~2 Newton iterations each. Force-displacement saved as CSV; one .vtk per increment.
+  - `--tangent finite_difference --state-update legacy`: fails at increment 88 (LSTM has run
+    200+ steps vs 100-step training sequences).
+  - tangent network (default): fails to converge on the Mac. Suspect: weights_scaler_Lt/ not
+    matching the stress network. Not yet checked: need the 5 Lt .npz files.
+- Weights: `legacy/fedoo_coupling/weights_scaler_3D/{weights_scaler_stress,weights_scaler_Lt}/`
+  on Aymen's Mac only (*.npz ignored by git).
+- Next steps:
+  1. Check the tangent network against the finite-difference tangent of the stress network.
+  2. Compare the force-displacement curve / stress fields with the thesis figures.
+  3. Analytic (exact) Jacobian of the LSTM step to replace finite differences.
+  4. Port training to Keras 3 / pandas 2 (`DataFrame.append` removed).
+  5. Port database generation: fedoo 1.x has no `Homogen.GetResultsUnitCell`; `output.dat`
+     missing from the repo. Note: legacy loadings only vary e11, e12, e22.
 - Trained weights are not in git; tests use synthetic weights (`tests/conftest.py`).
 
 ## Rules
