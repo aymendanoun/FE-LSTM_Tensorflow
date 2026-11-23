@@ -71,7 +71,7 @@ The trained weights are not in git (`*.npz` is ignored). By default the script r
 python scripts/run_fe.py                                  # FE-LSTM, settings from configs/
 python scripts/run_fe.py --weights /path/to/weights_scaler_3D
 python scripts/run_fe.py --material epicp                 # simcoon EPICP reference
-python scripts/run_fe.py --state-update consistent        # see "Porting notes"
+python scripts/run_fe.py --state-update legacy            # thesis behaviour, see "Porting notes"
 ```
 
 Results are written to `results/specimen_with_holes_tensile/` (`.fdh5`, plus `.vtk` for ParaView).
@@ -84,8 +84,10 @@ Results are written to `results/specimen_with_holes_tensile/` (`.fdh5`, plus `.v
   convention is unchanged: `[e_xx, e_yy, e_zz, g_xy, g_xz, g_yz]`, engineering shear.
 - **Recurrent state and Newton-Raphson.** In the 2022 code the LSTM state advanced at every
   Newton-Raphson iteration, and only the cell state `c` was restored when an increment was
-  restarted. `state_update: legacy` (default) keeps this behaviour; `state_update: consistent`
-  advances the LSTM exactly once per converged increment, as in the training sequences.
+  restarted. `state_update: consistent` (default, deliberate change) advances the LSTM exactly
+  once per converged increment, as in the training sequences. `state_update: legacy` keeps the
+  2022 behaviour for reference; on the specimen it fails to converge at increment 77 with
+  fedoo 1.x, because the LSTM runs well past its 100-step training length.
 - The weights are read once into memory instead of from disk at every call (same numbers).
 - **Tangent options.** `tangent: network` (default) uses the tangent network, symmetric by
   construction. `tangent: finite_difference` differentiates the stress network instead (always

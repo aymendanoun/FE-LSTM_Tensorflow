@@ -17,15 +17,17 @@ Voigt convention (unchanged between the legacy fedoo and fedoo 1.x):
 
 Recurrent state and Newton-Raphson iterations
 ---------------------------------------------
-fedoo calls ``update`` once per Newton-Raphson iteration. Two behaviours are available:
+fedoo calls ``update`` once per Newton-Raphson iteration. Two behaviours are available.
+Deliberate change from the thesis code: the default is ``"consistent"``. With ``"legacy"`` the
+specimen run fails to converge with fedoo 1.x (increment 77 of 100).
 
-``state_update="legacy"`` (default, reproduces the thesis code exactly)
+``state_update="legacy"`` (reproduces the thesis code exactly, kept for reference)
     The LSTM state advances at every call to ``update``, i.e. at every Newton-Raphson
     iteration. At the start of an increment only the cell states ``c`` are saved, and only
     they are restored if the increment is restarted; the hidden states ``h`` are not.
     The state also advances once with zero strain at initialization.
 
-``state_update="consistent"``
+``state_update="consistent"`` (default)
     Every Newton-Raphson iteration restarts from the state committed at the end of the
     previous converged increment, so the LSTM advances exactly one step per converged time
     increment (like the training sequences). ``h`` and ``c`` are stored in ``assembly.sv``
@@ -78,9 +80,9 @@ class LSTMConstitutiveLaw(Mechanical3D):
         Folder with two subfolders, as produced in the original project:
         ``weights_scaler_stress/`` (with ``scaling_stress.npz``) and
         ``weights_scaler_Lt/`` (with ``scaling_Lt.npz``).
-    state_update : {"legacy", "consistent"}
+    state_update : {"consistent", "legacy"}
         How the recurrent state is handled across Newton-Raphson iterations
-        (see module docstring).
+        (see module docstring). Default "consistent".
     tangent : {"network", "finite_difference"}
         ``"network"`` (thesis): tangent matrix predicted by the tangent network.
         ``"finite_difference"``: tangent computed from the stress network by forward finite
@@ -93,7 +95,7 @@ class LSTMConstitutiveLaw(Mechanical3D):
     def __init__(
         self,
         weights_dir: str | Path,
-        state_update: str = "legacy",
+        state_update: str = "consistent",
         tangent: str = "network",
         name: str = "",
     ):
@@ -106,7 +108,7 @@ class LSTMConstitutiveLaw(Mechanical3D):
 
     @classmethod
     def from_networks(
-        cls, stress_net, tangent_net=None, state_update: str = "legacy", tangent: str = "network", name: str = ""
+        cls, stress_net, tangent_net=None, state_update: str = "consistent", tangent: str = "network", name: str = ""
     ):
         """Build the law from network objects (``LSTMSurrogate`` or any object with the same
         ``n_inputs``, ``n_outputs``, ``n_lstm_layers``, ``zero_state`` and ``step``)."""

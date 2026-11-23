@@ -17,9 +17,10 @@ material:
   # legacy script (not in git: *.npz is ignored). The DenseMaterial variant used
   # ./weights_scaler_3D_DenseMaterial instead.
   weights_dir: legacy/fedoo_coupling/weights_scaler_3D
-  # legacy     : LSTM state advances at every Newton-Raphson iteration (thesis behaviour)
-  # consistent : LSTM state advances once per converged time increment
-  state_update: legacy
+  # consistent : LSTM state advances once per converged time increment (project default)
+  # legacy     : LSTM state advances at every Newton-Raphson iteration (thesis code; fails
+  #              to converge on this specimen with fedoo 1.x, kept for reference only)
+  state_update: consistent
   # network           : tangent matrix from the tangent network (thesis)
   # finite_difference : tangent from the stress network by finite differences (diagnostic)
   tangent: network

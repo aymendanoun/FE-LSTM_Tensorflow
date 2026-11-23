@@ -5,7 +5,8 @@ Port of legacy/fedoo_coupling/RNN_3D_specimen_with_holes_tensile.py.
 Usage (from the repository root):
     python scripts/run_fe.py
     python scripts/run_fe.py --material epicp                # simcoon reference instead of LSTM
-    python scripts/run_fe.py --weights path/to/weights_scaler_3D --state-update consistent
+    python scripts/run_fe.py --weights path/to/weights_scaler_3D
+    python scripts/run_fe.py --state-update legacy           # thesis behaviour (reference only)
     python scripts/run_fe.py --tangent finite_difference     # tangent from the stress network
 """
 
