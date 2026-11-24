@@ -10,94 +10,48 @@ could run on a standard desktop. The thesis received the **CSMA PhD Thesis Award
 
 > Thesis: TODO add title and link (e.g. theses.fr / HAL)
 
-## Goals
+## Workflow
 
-1. **Reproduce** the original results with the versions used at the time (`environment-legacy.yml`).
-2. **Modernise** the code for the latest Fedoo, Simcoon and TensorFlow/Keras 3 (`environment.yml`)
-   and check the results against the reference.
+The project has three self-contained stages, one folder each. Each stage has its own package,
+scripts, configs, tests and README, and hands its output to the next stage through files.
 
-## Pipeline
+| Stage | Folder | Does | Produces |
+|-------|--------|------|----------|
+| 1 | [`database_generation/`](database_generation/) | RVE with microgen, micro-simulations with fedoo + simcoon along random strain paths | strain-stress-tangent histories (`data/`) |
+| 2 | [`training/`](training/) | Trains the stress and tangent LSTMs (TensorFlow / Keras 3) | exported `.npz` weights (`models/`) |
+| 3 | [`fe_lstm/`](fe_lstm/) | Uses the LSTMs as the constitutive law of a fedoo FE simulation | FE results (`results/`) |
 
-1. **Database generation** (`src/fe_lstm/data/`): micro-scale simulations with Simcoon/Fedoo produce
-   strain-stress histories.
-2. **Training** (`src/fe_lstm/model/`): an LSTM learns the history-dependent constitutive response.
-3. **FE coupling** (`src/fe_lstm/fem/`): the trained LSTM replaces the constitutive law in a Fedoo
-   finite element simulation.
+`legacy/` holds the original PhD scripts, unmodified, as the reference.
 
 ## Installation
 
 ```bash
 conda env create -f environment.yml
 conda activate felstm
-pip install -e .
-pytest
+pip install -e database_generation -e training -e fe_lstm
+pytest                      # runs the tests of the three stages
 ```
+
+Stage 1 comes with ready-made RVE meshes ([`database_generation/rve_examples/`](database_generation/rve_examples/README.md)).
+Building your own RVE with microgen needs a small `felstm-geometry` environment: see
+[`database_generation/README.md`](database_generation/README.md).
 
 ## Usage
 
 ```bash
-python scripts/generate.py --config configs/default.yaml
-python scripts/train.py    --config configs/default.yaml
-python scripts/run_fe.py   --config configs/default.yaml
+cd database_generation && python scripts/build_rve.py           # stage 1a, optional (felstm-geometry env)
+cd database_generation && python scripts/generate_database.py   # stage 1b
+cd training            && python scripts/train.py               # stage 2
+cd fe_lstm             && python scripts/run_fe.py              # stage 3
 ```
-
-## Repository structure
-
-| Path | Content |
-|------|---------|
-| `legacy/` | Original PhD scripts, unmodified |
-| `src/fe_lstm/` | Ported, installable package |
-| `scripts/` | Command-line entry points |
-| `configs/` | YAML configuration files |
-| `tests/` | Regression tests against `reference_results/` |
-| `reference_results/` | Small reference outputs from the legacy run |
-| `notebooks/` | Legacy vs modern comparison plots |
 
 ## Status
 
-- [x] Fedoo coupling ported to fedoo 1.x (`src/fe_lstm/fem/`, `scripts/run_fe.py`)
-- [ ] FE-LSTM run with the trained thesis weights and compared to the thesis results
-- [ ] Training ported to Keras 3
-- [ ] Database generation ported (fedoo 1.x has no path-driven unit-cell solver any more)
+- [x] Stage 3 ported to fedoo 1.x and run with the thesis weights
+- [x] Stage 1 rebuilt on microgen + fedoo 1.x (thesis RVE reproduced, database not generated yet)
+- [ ] Stage 2 ported to Keras 3 / pandas 2
+- [ ] Full workflow run end to end and compared with the thesis results
 - [ ] Legacy environment pinned and original results reproduced
-
-## Running the FE-LSTM simulation
-
-The trained weights are not in git (`*.npz` is ignored). By default the script reads them from
-`legacy/fedoo_coupling/weights_scaler_3D/` (holding `weights_scaler_stress/` and
-`weights_scaler_Lt/`), where the 2022 script expected them. Use `--weights` for another folder:
-
-```bash
-python scripts/run_fe.py                                  # FE-LSTM, settings from configs/
-python scripts/run_fe.py --weights /path/to/weights_scaler_3D
-python scripts/run_fe.py --material epicp                 # simcoon EPICP reference
-python scripts/run_fe.py --state-update legacy            # thesis behaviour, see "Porting notes"
-```
-
-Results are written to `results/specimen_with_holes_tensile/` (`.fdh5`, plus `.vtk` for ParaView).
-
-## Porting notes (fedoo 2022 -> fedoo 1.1)
-
-- The LSTM inference was already pure NumPy (weights exported from Keras), so TensorFlow is only
-  needed for training. `src/fe_lstm/model/numpy_lstm.py` is tested against a Keras 3 model.
-- The law (`src/fe_lstm/fem/lstm_law.py`) now derives from fedoo's `Mechanical3D`. The Voigt
-  convention is unchanged: `[e_xx, e_yy, e_zz, g_xy, g_xz, g_yz]`, engineering shear.
-- **Recurrent state and Newton-Raphson.** In the 2022 code the LSTM state advanced at every
-  Newton-Raphson iteration, and only the cell state `c` was restored when an increment was
-  restarted. `state_update: consistent` (default, deliberate change) advances the LSTM exactly
-  once per converged increment, as in the training sequences. `state_update: legacy` keeps the
-  2022 behaviour for reference; on the specimen it fails to converge at increment 77 with
-  fedoo 1.x, because the LSTM runs well past its 100-step training length.
-- The weights are read once into memory instead of from disk at every call (same numbers).
-- **Tangent options.** `tangent: network` (default) uses the tangent network, symmetric by
-  construction. `tangent: finite_difference` differentiates the stress network instead (always
-  consistent with the stress, no tangent weights needed). That tangent is unsymmetric, and fedoo
-  1.x assembles only one triangle of the stiffness in small strain (`assume_sym`), so the script
-  switches to full assembly for it.
-- **Newton-Raphson criterion.** The 2022 "Displacement" error was `max|correction| / max|total
-  displacement|`; fedoo 1.x normalises by the increment, which is much stricter for the same
-  tolerance (the thesis tolerance 0.05 then fails). `nr_criterion: LegacyDisplacement` (default,
-  `src/fe_lstm/fem/legacy_nr.py`) restores the 2022 definition; `Displacement` uses fedoo 1.x's.
 
 ## License
 

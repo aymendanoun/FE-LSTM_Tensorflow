@@ -1,0 +1,53 @@
+# FE-LSTM tensile test on a 3D specimen with holes.
+# Port of legacy/fedoo_coupling/RNN_3D_specimen_with_holes_tensile.py. Values are the legacy ones.
+# Relative paths are relative to the fe_lstm/ folder.
+
+mesh:
+  file: ../legacy/fedoo_coupling/specimen_with_holes_refined.msh
+  elm_type: tet4            # legacy meshID "Domain2" = tet4 part of the gmsh file
+
+material:
+  # lstm    : FE-LSTM surrogate (legacy mat = 3)
+  # elastic : linear isotropic elasticity (legacy default branch)
+  # eliso   : simcoon ELISO umat (legacy mat = 0)
+  # epicp   : simcoon EPICP elastoplasticity (legacy mat = 1)
+  type: lstm
+  # Folder holding weights_scaler_stress/ and weights_scaler_Lt/ exported by
+  # legacy/training/LSTM_model_Get_weights_scaler_*.py: the thesis weights, kept next to the
+  # legacy script (not in git: *.npz is ignored). The DenseMaterial variant used
+  # ./weights_scaler_3D_DenseMaterial instead.
+  weights_dir: ../legacy/fedoo_coupling/weights_scaler_3D
+  # consistent : LSTM state advances once per converged time increment (project default)
+  # legacy     : LSTM state advances at every Newton-Raphson iteration (thesis code; fails
+  #              to converge on this specimen with fedoo 1.x, kept for reference only)
+  state_update: consistent
+  # network           : tangent matrix from the tangent network (thesis)
+  # finite_difference : tangent from the stress network by finite differences (diagnostic)
+  tangent: network
+  E: 113800.0
+  nu: 0.342
+  alpha: 0.86e-5
+  Re: 1000.0                # EPICP yield stress
+  k: 1600.0                 # EPICP hardening modulus
+  m: 0.5                    # EPICP hardening exponent
+
+loading:
+  ux_right: 0.04            # imposed DispX on the right face (x = xmax)
+  # left face (x = xmin): DispX = DispY = DispZ = 0 ; right face: DispY = 0
+
+solver:
+  dt: 0.01
+  tmax: 1.0
+  update_dt: false
+  # LegacyDisplacement : 2022 fedoo definition, error = max|correction| / max|total displacement|
+  # Displacement       : fedoo 1.x definition, normalised by the increment (much stricter)
+  # Force, Work        : fedoo 1.x criteria
+  nr_criterion: LegacyDisplacement
+  tol_nr: 0.05
+  max_subiter: 6            # legacy default
+
+output:
+  dir: results/specimen_with_holes_tensile
+  name: RNN_specimen_with_holes_tensile
+  fields: [Disp, Stress, Strain]
+  vtk: true                 # also export one .vtk file per saved increment

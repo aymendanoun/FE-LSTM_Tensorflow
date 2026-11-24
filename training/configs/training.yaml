@@ -1,0 +1,40 @@
+# Training (stage 2). Relative paths are relative to the training/ folder.
+# Values marked "legacy" come from legacy/training/LSTM_model_Training_*.py.
+seed: 0
+
+data:
+  database_dir: ../database_generation/data/database   # output of stage 1
+  n_paths: 1000             # = database_generation n_paths (legacy: 10000)
+  timesteps: 100            # legacy
+  test_fraction: 0.1        # legacy: last 10% of paths, no shuffle
+  validation_split: 0.2     # legacy: Keras validation_split on the training set
+  scaling: minmax           # legacy: sklearn MinMaxScaler on inputs and outputs
+
+networks:
+  stress:
+    inputs: [Exx, Eyy, Ezz, Exy, Exz, Eyz]               # legacy
+    outputs: [Sxx, Syy, Szz, Sxy, Sxz, Syz]              # legacy
+  tangent:
+    inputs: [Exx, Eyy, Ezz, Exy, Exz, Eyz]               # legacy
+    # legacy order: 6 diagonal terms, then the upper triangle row by row
+    outputs: [C11, C22, C33, C44, C55, C66, C12_m, C13_m, C14_m, C15_m, C16_m,
+              C23_m, C24_m, C25_m, C26_m, C34_m, C35_m, C36_m, C45_m, C46_m, C56_m]
+
+model:                      # legacy: LSTM(50) -> LSTM(50) -> Dense(50, relu) -> Dense(n_out)
+  lstm_units: [50, 50]
+  dense_units: 50
+  dense_activation: relu
+
+training:
+  optimizer: adam           # legacy
+  loss: mse                 # legacy
+  epochs: 1000              # legacy
+  batch_size: 32            # legacy: Keras default
+  shuffle: true             # legacy
+  keep_best: val_loss       # legacy kept the epoch with the lowest validation NMSE
+
+output:
+  # Exported weights, read by the fe_lstm stage:
+  # <dir>/weights_scaler_stress/{LSTM_layer_1,LSTM_layer_2,Dense_layer_3,Dense_layer_4,scaling_stress}.npz
+  # <dir>/weights_scaler_Lt/{...,scaling_Lt}.npz
+  dir: models/weights_scaler_3D   # not in git

@@ -1,0 +1,47 @@
+# Example RVEs built with microgen (felstm-geometry env):
+#   python scripts/build_rve_examples.py            # all
+#   python scripts/build_rve_examples.py gyroid_sheet
+# Each entry: kind = a builder of src/database_generation/geometry.py (BUILDERS), its parameters,
+# and the gmsh mesh size. Lengths are in the units of the FE model (unit cells here).
+octet_truss_thesis:
+  description: Octet-truss lattice of the thesis (face struts r=0.10, inner struts r=0.05), same as legacy octet_surf.msh
+  kind: octet_truss
+  params: {cell_size: 1.0, face_strut_radius: 0.10, inner_strut_radius: 0.05}
+  mesh_size: 0.1
+
+octet_truss_uniform:
+  description: Octet-truss lattice, all struts r=0.07
+  kind: octet_truss
+  params: {cell_size: 1.0, face_strut_radius: 0.07, inner_strut_radius: 0.07}
+  mesh_size: 0.07
+
+gyroid_sheet:
+  description: Gyroid TPMS sheet, solid fraction 0.25
+  kind: tpms
+  params: {surface: gyroid, part: sheet, solid_fraction: 0.25, cell_size: 1.0, resolution: 20}
+  mesh_size: 0.07
+
+neovius_sheet:
+  description: Neovius TPMS sheet, solid fraction 0.25
+  kind: tpms
+  params: {surface: neovius, part: sheet, solid_fraction: 0.25, cell_size: 1.0, resolution: 20}
+  mesh_size: 0.07
+# Schwarz D (diamond) sheet: not periodic-meshable with microgen 1.3.1 (resolutions 16-30 tried).
+
+schwarz_p_skeletal:
+  description: Schwarz P TPMS skeletal (lower) solid, solid fraction 0.30
+  kind: tpms
+  params: {surface: schwarzP, part: lower skeletal, solid_fraction: 0.30, cell_size: 1.0, resolution: 20}
+  mesh_size: 0.07
+
+spherical_pore:
+  description: Cubic cell with a centred spherical pore of radius 0.4 (porosity 0.27)
+  kind: spherical_pore
+  params: {cell_size: 1.0, pore_radius: 0.4}
+  mesh_size: 0.08
+
+honeycomb:
+  description: Hexagonal honeycomb (side 0.5, wall 0.06), walls along x, periodic cell 0.5 x 0.866 x 1.5
+  kind: honeycomb
+  params: {side_length: 0.5, wall_thickness: 0.06, depth: 0.5}
+  mesh_size: 0.05
