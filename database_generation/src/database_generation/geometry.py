@@ -3,10 +3,22 @@
 Runs in the ``felstm-geometry`` environment (``environment-geometry.yml``), which has microgen.
 The rest of the stage (micro-simulations) runs in ``felstm`` and only reads the mesh file.
 
-Every builder returns a CadQuery solid filling a box-shaped periodic cell ``[0, Lx] x [0, Ly] x
-[0, Lz]`` (one material) and the cell dimensions. :func:`mesh_rve` meshes it periodically, so
-fedoo's ``PeriodicBC`` can pair the nodes of opposite faces. The cell is the bounding box of the
-mesh: the solid must touch the six faces (true for all builders here).
+Workflow of microgen's examples (https://3mah.github.io/microgen-docs/examples/index.html,
+"Periodic gyroid mesh from a STEP file"), in :func:`build_rve`:
+
+1. a builder returns the geometry of a box-shaped periodic cell ``[0, Lx] x [0, Ly] x [0, Lz]``
+   (one material): a CadQuery solid, or directly a tetrahedral volume grid (TPMS ``method="grid"``);
+2. a CAD solid is meshed periodically with gmsh (:func:`mesh_rve`, ``microgen.meshPeriodic``);
+3. optionally, the mesh is remeshed with mmg keeping its periodicity (:func:`remesh`,
+   ``microgen.remesh.remesh_keeping_periodicity_for_fem``, named
+   ``remesh_keeping_boundaries_for_fem(..., periodic=True)`` in microgen 2): the triangles on the
+   cell faces are frozen, the rest is remeshed, which removes the slivers gmsh leaves along
+   tessellated surfaces;
+4. the mesh is written in gmsh format 2.2.
+
+fedoo's ``PeriodicBC`` pairs the nodes of opposite faces. The cell is the bounding box of the
+mesh: the solid must touch the six faces (true for all builders here). mmg (``mmg3d_O3``) is not
+packaged for Apple Silicon: ``scripts/install_mmg.sh`` builds it into ``felstm-geometry``.
 
 Builders (adapted from https://github.com/3MAH/microgen/tree/v1.3.1/examples):
 
@@ -101,8 +113,14 @@ def octet_truss(cell_size: float = 1.0, face_strut_radius: float = 0.1,
 
 
 def tpms(surface: str = "gyroid", part: str = "sheet", solid_fraction: float = 0.25,
-         cell_size: float = 1.0, resolution: int = 20):
+         cell_size: float = 1.0, resolution: int = 20, method: str = "cad"):
     """TPMS solid in a cubic cell (one period), offset chosen to reach ``solid_fraction``.
+
+    ``method="cad"`` (default): CadQuery solid, meshed with gmsh then (optionally) mmg.
+    ``method="grid"``: microgen's voxel-based volume grid (``Tpms.grid_sheet`` /
+    ``grid_lower_skeletal`` / ``grid_upper_skeletal``, as in the microgen "Periodic remeshing"
+    example), no CAD nor gmsh: always periodic, but its cell faces carry clipped voxel triangles,
+    so the remeshed quality is lower. Use it when the CAD route cannot be meshed periodically.
 
     ``surface``: a function name of ``microgen.shape.surface_functions`` (gyroid, schwarzP,
     schwarzD, neovius, ...). ``part``: "sheet", "lower skeletal" or "upper skeletal".
@@ -119,6 +137,19 @@ def tpms(surface: str = "gyroid", part: str = "sheet", solid_fraction: float = 0
         surface_function=getattr(surface_functions, surface), density=solid_fraction,
         cell_size=cell_size, resolution=resolution, center=(cell_size / 2,) * 3,
     )
+    if method == "grid":
+        import pyvista as pv
+
+        grid = {"sheet": geometry.grid_sheet, "lower skeletal": geometry.grid_lower_skeletal,
+                "upper skeletal": geometry.grid_upper_skeletal}[part].triangulate()
+        grid = grid.translate(-np.array(grid.bounds[::2]), inplace=False)  # cell = [0, L]^3
+        grid = grid.extract_cells_by_type(pv.CellType.TETRA)
+        fraction = abs(grid.volume) / cell_size**3
+        if abs(fraction - solid_fraction) > 0.02:
+            raise ValueError(f"TPMS grid solid fraction {fraction:.3f} instead of {solid_fraction}")
+        return grid, (cell_size,) * 3
+    if method != "cad":
+        raise ValueError(f"method must be 'cad' or 'grid', got {method!r}")
     solid = geometry.generate(type_part=part)
     fraction = solid.Volume() / cell_size**3
     if abs(fraction - solid_fraction) > 0.02:  # microgen can return a wrong solid (e.g. the full cell)
@@ -205,12 +236,55 @@ def mesh_rve(solid, dims, output_file: str | Path, mesh_size: float, order: int 
     return output_file
 
 
-def build_rve(output_file: str | Path, kind: str, mesh_size: float, **params) -> Path:
-    """Build an RVE with ``BUILDERS[kind](**params)`` and write its periodic mesh."""
+def remesh(grid, hmax: float, hausd: float | None = None, hmin: float | None = None,
+           hgrad: float | None = None):
+    """Remesh a periodic tetrahedral grid with mmg, keeping its periodicity (microgen)."""
+    import shutil
+
+    from microgen.remesh import remesh_keeping_periodicity_for_fem
+
+    if shutil.which("mmg3d_O3") is None:
+        raise RuntimeError("mmg3d_O3 not found: run scripts/install_mmg.sh in felstm-geometry")
+    return remesh_keeping_periodicity_for_fem(grid, hmax=hmax, hausd=hausd, hmin=hmin, hgrad=hgrad)
+
+
+def write_msh(grid, output_file: str | Path) -> Path:
+    """Write the tetrahedra of a pyvista grid in gmsh format 2.2 (read by fedoo)."""
+    import meshio
+    import pyvista as pv
+
+    tets = grid.extract_cells_by_type(pv.CellType.TETRA)
+    cells = tets.cells_dict[pv.CellType.TETRA]
+    output_file = Path(output_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    meshio.write(str(output_file), meshio.Mesh(np.asarray(tets.points, dtype=float), [("tetra", cells)]),
+                 file_format="gmsh22", binary=False)
+    return output_file
+
+
+def build_rve(output_file: str | Path, kind: str, mesh_size: float, remesh_options: dict | None = None,
+              **params) -> Path:
+    """Build an RVE with ``BUILDERS[kind](**params)`` and write its periodic tetrahedral mesh.
+
+    ``mesh_size``: gmsh size for CAD geometries. ``remesh_options``: if given, mmg options of
+    :func:`remesh` (``hmax`` required, ``hausd``, ``hmin``, ``hgrad``).
+    """
+    import pyvista as pv
+
     if kind not in BUILDERS:
         raise ValueError(f"Unknown RVE kind {kind!r}; available: {sorted(BUILDERS)}")
-    solid, dims = BUILDERS[kind](**params)
-    return mesh_rve(solid, dims, output_file, mesh_size)
+    geometry, dims = BUILDERS[kind](**params)
+    output_file = Path(output_file)
+    if isinstance(geometry, pv.DataSet):
+        if not remesh_options:
+            raise ValueError("A grid geometry (TPMS method='grid') needs remesh_options")
+        grid = geometry
+    else:
+        mesh_rve(geometry, dims, output_file, mesh_size)
+        if not remesh_options:
+            return output_file
+        grid = pv.read(str(output_file)).extract_cells_by_type(pv.CellType.TETRA)
+    return write_msh(remesh(grid, **remesh_options), output_file)
 
 
 def mesh_octet_rve(output_file: str | Path, cell_size: float = 1.0, face_strut_radius: float = 0.1,

@@ -82,3 +82,33 @@ def test_unknown_kind(tmp_path):
 
     with pytest.raises(ValueError, match="Unknown RVE kind"):
         build_rve(tmp_path / "x.msh", "foam", 0.1)
+
+
+def test_remesh_keeps_periodicity_and_improves_quality(tmp_path):
+    pytest.importorskip("microgen")
+    import shutil
+
+    import pyvista as pv
+
+    if shutil.which("mmg3d_O3") is None:
+        pytest.skip("mmg3d_O3 not installed (scripts/install_mmg.sh)")
+    from microgen import is_periodic
+
+    from database_generation.check import element_quality
+    from database_generation.geometry import build_rve
+
+    raw = build_rve(tmp_path / "raw.msh", "spherical_pore", 0.1, cell_size=1.0, pore_radius=0.4)
+    rem = build_rve(tmp_path / "rem.msh", "spherical_pore", 0.1, remesh_options={"hmax": 0.1, "hausd": 0.005},
+                    cell_size=1.0, pore_radius=0.4)
+    g_raw, g_rem = (pv.read(str(f)).extract_cells_by_type(pv.CellType.TETRA) for f in (raw, rem))
+    assert is_periodic(g_rem.points)
+    assert abs(g_rem.volume - g_raw.volume) < 0.01
+    assert element_quality(g_rem)["sj_min"] > element_quality(g_raw)["sj_min"]
+
+
+def test_grid_tpms_needs_remesh(tmp_path):
+    pytest.importorskip("microgen")
+    from database_generation.geometry import build_rve
+
+    with pytest.raises(ValueError, match="remesh_options"):
+        build_rve(tmp_path / "x.msh", "tpms", None, surface="gyroid", resolution=12, method="grid")

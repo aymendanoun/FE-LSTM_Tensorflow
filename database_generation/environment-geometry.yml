@@ -2,6 +2,9 @@
 # Separate from felstm because microgen's conda-forge build needs Python < 3.12 and its PyPI build
 # would downgrade numpy / pyvista / VTK in felstm (risk for the compiled simcoon and fedoo).
 # The micro-simulations themselves run in felstm and only read the mesh file.
+# mmg (remeshing, mmg3d_O3) has no package for Apple Silicon: after creating the env, run
+#   conda activate felstm-geometry && bash scripts/install_mmg.sh
+# which builds it from the official source with cmake/make (added by the script).
 name: felstm-geometry
 channels:
   - conda-forge

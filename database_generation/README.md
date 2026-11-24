@@ -15,8 +15,9 @@ The micro-simulations read one periodic RVE mesh, `geometry.mesh_file` in
 `configs/database.yaml`:
 
 - **Example meshes** ([`rve_examples/`](rve_examples/README.md)): octet truss (the thesis RVE,
-  default), gyroid, Neovius and Schwarz P TPMS, spherical pore, honeycomb. Ready to use, no
-  microgen needed.
+  default, and a remeshed version), gyroid, Neovius, Schwarz P and Schwarz D TPMS, spherical
+  pore, honeycomb. Built like the microgen examples (gmsh, then mmg remeshing keeping
+  periodicity, for good element quality). Ready to use, no microgen needed.
 - **Your own RVE**: edit `geometry.build` in the config and run `scripts/build_rve.py`, or build
   any geometry with microgen. Check it with `scripts/check_rve.py`.
 
@@ -24,7 +25,7 @@ The micro-simulations read one periodic RVE mesh, `geometry.mesh_file` in
 
 | Step | Environment | Why |
 |------|-------------|-----|
-| Build an RVE mesh (microgen, CadQuery, gmsh) | `felstm-geometry` ([`environment-geometry.yml`](environment-geometry.yml)) | microgen's conda build needs Python < 3.12; its PyPI build would downgrade numpy / pyvista / VTK in `felstm` |
+| Build an RVE mesh (microgen, CadQuery, gmsh, mmg) | `felstm-geometry` ([`environment-geometry.yml`](environment-geometry.yml), then `scripts/install_mmg.sh`) | microgen's conda build needs Python < 3.12; its PyPI build would downgrade numpy / pyvista / VTK in `felstm`; mmg has no Apple Silicon package |
 | Check meshes, run the micro-simulations (fedoo, simcoon) | `felstm` (`../environment.yml`) | |
 
 The two steps only share the mesh file. With an example mesh, only `felstm` is needed.
@@ -34,6 +35,7 @@ The two steps only share the mesh file. With an example mesh, only `felstm` is n
 conda activate felstm && pip install -e .
 conda env create -f environment-geometry.yml                     # only to build RVEs
 conda activate felstm-geometry && pip install --no-deps -e .
+bash scripts/install_mmg.sh                                      # mmg, for remeshing
 
 # optional: your own RVE (felstm-geometry), then check it (felstm)
 conda activate felstm-geometry && python scripts/build_rve.py     # -> data/rve/my_rve.msh

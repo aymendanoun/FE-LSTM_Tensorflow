@@ -19,8 +19,11 @@ geometry:
       cell_size: 1.0            # legacy: unit cell
       face_strut_radius: 0.10   # measured on octet_surf.msh
       inner_strut_radius: 0.05  # measured on octet_surf.msh (0.04-0.05)
-    mesh_size: 0.1              # matches octet_surf.msh (4164 vs 4072 tet4, elastic stiffness
-                                # within 0.7%). Not mesh-converged: 0.05 gives ~8% stiffer.
+    mesh_size: 0.1              # gmsh size; matches octet_surf.msh (4164 vs 4072 tet4, elastic
+                                # stiffness within 0.7%). Not mesh-converged: 0.05 gives ~8% stiffer.
+    # Optional mmg remeshing keeping periodicity (needs mmg3d_O3, scripts/install_mmg.sh), as in the
+    # microgen examples: removes the slivers of the gmsh mesh. Off here to reproduce the thesis mesh.
+    # remesh: {hmax: 0.1, hausd: 0.005}
     output: data/rve/my_rve.msh
 
 material:                       # base material of the struts (simcoon umat), all legacy

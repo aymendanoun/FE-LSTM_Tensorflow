@@ -25,7 +25,8 @@ def main():
     args = parser.parse_args()
     b = yaml.safe_load(Path(args.config).read_text())["geometry"]["build"]
     t0 = time.time()
-    out = build_rve(STAGE / b["output"], b["kind"], b["mesh_size"], **b["params"])
+    out = build_rve(STAGE / b["output"], b["kind"], b["mesh_size"], remesh_options=b.get("remesh"),
+                    **b["params"])
     print(f"RVE mesh written to {out} ({time.time() - t0:.1f} s)")
 
 

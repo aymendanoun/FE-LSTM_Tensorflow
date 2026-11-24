@@ -23,6 +23,10 @@ def test_example_is_usable(name):
     assert 0.05 < info["solid_fraction"] < 0.95
     C = info["C_hom"]
     np.testing.assert_allclose(C, C.T, atol=1e-6 * np.abs(C).max())
+    if "remesh" in EXAMPLES[name]:  # mmg-remeshed: few slivers (gmsh-only TPMS meshes: 8-22%)
+        voxel_route = EXAMPLES[name]["params"].get("method") == "grid"
+        assert info["sj_below_0.2_percent"] < (7.0 if voxel_route else 2.0)
+        assert info["rr_max"] < 50
 
 
 def test_default_config_uses_thesis_example(cfg):

@@ -28,11 +28,16 @@ across stages (never `from conftest import` in a new stage: use a uniquely named
   `data/rve/my_rve.msh` from `geometry.build`; `scripts/generate_database.py` runs in felstm.
   microgen 1.3.1 has no lattice class and names the mesher `meshPeriodic` (not `mesh_periodic`);
   it leaves gmsh open after a meshing error (geometry.mesh_rve finalizes it).
-- RVE examples (2026-11-24): `database_generation/rve_examples/*.msh` (committed, ~4 MB) built
-  from `examples.yaml` by `scripts/build_rve_examples.py`: octet_truss_thesis (default
-  `geometry.mesh_file`), octet_truss_uniform, gyroid_sheet, neovius_sheet, schwarz_p_skeletal,
-  spherical_pore, honeycomb. `scripts/check_rve.py` (felstm) validates any mesh (tet4, periodic,
-  C_hom, short EPICP path). TPMS periodic meshing depends on `resolution`; Schwarz D sheet fails.
+- RVE examples (2026-11-24): `database_generation/rve_examples/*.msh` (committed, ~10 MB) built
+  from `examples.yaml` by `scripts/build_rve_examples.py`, workflow of the microgen docs: CAD ->
+  gmsh periodic mesh -> mmg remesh keeping periodicity (`remesh_keeping_periodicity_for_fem`,
+  boundary-face triangles frozen). octet_truss_thesis (default `geometry.mesh_file`) stays
+  gmsh-only to reproduce the thesis; octet_truss_thesis_remeshed, octet_truss_uniform,
+  gyroid/neovius sheets, schwarz_p_skeletal, schwarz_d_sheet (voxel `method: grid`, CAD route not
+  periodic-meshable), spherical_pore, honeycomb are remeshed (slivers 22% -> ~1% for gyroid).
+  `scripts/check_rve.py` (felstm) validates any mesh (tet4, periodic, quality, C_hom, EPICP).
+- mmg 5.8.0 has no Apple Silicon package: built from official source into felstm-geometry by
+  `database_generation/scripts/install_mmg.sh` (cmake/make from conda-forge).
 - Thesis RVE = legacy `octet_surf.msh`: unit cell, face struts r=0.10, inner struts r=0.05, mesh
   size 0.1. microgen version: C11/C12/C44 within 0.7% of the thesis mesh (8705/3694/3564, equal
   to the thesis Lt network's scaling maxima). Not mesh-converged (size 0.05: ~8% stiffer).

@@ -33,7 +33,8 @@ def main():
         ex = examples[name]
         t0 = time.time()
         try:
-            out = build_rve(EXAMPLES_DIR / f"{name}.msh", ex["kind"], ex["mesh_size"], **ex["params"])
+            out = build_rve(EXAMPLES_DIR / f"{name}.msh", ex["kind"], ex["mesh_size"],
+                            remesh_options=ex.get("remesh"), **ex["params"])
             print(f"{name:22s} -> {out.name}  ({time.time() - t0:.1f} s)", flush=True)
         except Exception as exc:  # report and go on with the other examples
             failed.append(name)

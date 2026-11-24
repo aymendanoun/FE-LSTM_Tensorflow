@@ -7,8 +7,8 @@ Requirements of :class:`database_generation.rve.RVESimulation`:
 * periodic node layout: every node on a face has a partner at the same position on the
   opposite face (needed by ``fd.constraint.PeriodicBC``).
 
-:func:`check_mesh` also computes the solid fraction and the homogenized elastic stiffness, and can
-run a short elastoplastic path.
+:func:`check_mesh` also computes the solid fraction, the element quality (:func:`element_quality`),
+the homogenized elastic stiffness, and can run a short elastoplastic path.
 """
 
 from __future__ import annotations
@@ -29,6 +29,21 @@ def _face_pairs_match(nodes: np.ndarray, tol: float) -> bool:
         if not np.array_equal(key(a), key(b)):
             return False
     return True
+
+
+def element_quality(grid) -> dict:
+    """Tetrahedron quality of a pyvista grid (VTK verdict measures).
+
+    * scaled Jacobian: 1 for a regular tetrahedron, near 0 for flat ones (slivers);
+    * radius ratio: circumradius / (3 x inradius), 1 for a regular tetrahedron, large for slivers.
+    """
+    sj = grid.cell_quality("scaled_jacobian")["scaled_jacobian"]
+    rr = grid.cell_quality("radius_ratio")["radius_ratio"]
+    return {
+        "sj_min": float(sj.min()), "sj_mean": float(sj.mean()),
+        "sj_below_0.2_percent": 100.0 * float((sj < 0.2).mean()),
+        "rr_max": float(rr.max()), "rr_above_3_percent": 100.0 * float((rr > 3).mean()),
+    }
 
 
 def check_mesh(mesh_file: str | Path, E: float = 113800.0, nu: float = 0.342,
@@ -57,6 +72,7 @@ def check_mesh(mesh_file: str | Path, E: float = 113800.0, nu: float = 0.342,
         "nodes": mesh.n_nodes, "tet4": mesh.n_elements, "cell": tuple(np.round(dims, 6)),
         "solid_fraction": vol.sum() / np.prod(dims), "periodic": _face_pairs_match(x, tol * dims.max()),
     }
+    info.update(element_quality(mesh.to_pyvista()))
     if not info["periodic"]:
         raise ValueError(f"{mesh_file}: nodes of opposite faces do not match (not periodic)")
 
