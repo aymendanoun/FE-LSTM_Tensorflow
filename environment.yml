@@ -11,6 +11,7 @@ dependencies:
   - matplotlib
   - pyvista
   - h5py
+  - pyyaml
   - pytest
   - jupyterlab
   - set3mah::simcoon

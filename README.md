@@ -55,11 +55,49 @@ python scripts/run_fe.py   --config configs/default.yaml
 
 ## Status
 
-- [ ] Legacy environment pinned and original results reproduced
-- [ ] Database generation ported
+- [x] Fedoo coupling ported to fedoo 1.x (`src/fe_lstm/fem/`, `scripts/run_fe.py`)
+- [ ] FE-LSTM run with the trained thesis weights and compared to the thesis results
 - [ ] Training ported to Keras 3
-- [ ] Fedoo coupling ported to fedoo 1.x
-- [ ] Regression tests passing
+- [ ] Database generation ported (fedoo 1.x has no path-driven unit-cell solver any more)
+- [ ] Legacy environment pinned and original results reproduced
+
+## Running the FE-LSTM simulation
+
+The trained weights are not in git (`*.npz` is ignored). By default the script reads them from
+`legacy/fedoo_coupling/weights_scaler_3D/` (holding `weights_scaler_stress/` and
+`weights_scaler_Lt/`), where the 2022 script expected them. Use `--weights` for another folder:
+
+```bash
+python scripts/run_fe.py                                  # FE-LSTM, settings from configs/
+python scripts/run_fe.py --weights /path/to/weights_scaler_3D
+python scripts/run_fe.py --material epicp                 # simcoon EPICP reference
+python scripts/run_fe.py --state-update legacy            # thesis behaviour, see "Porting notes"
+```
+
+Results are written to `results/specimen_with_holes_tensile/` (`.fdh5`, plus `.vtk` for ParaView).
+
+## Porting notes (fedoo 2022 -> fedoo 1.1)
+
+- The LSTM inference was already pure NumPy (weights exported from Keras), so TensorFlow is only
+  needed for training. `src/fe_lstm/model/numpy_lstm.py` is tested against a Keras 3 model.
+- The law (`src/fe_lstm/fem/lstm_law.py`) now derives from fedoo's `Mechanical3D`. The Voigt
+  convention is unchanged: `[e_xx, e_yy, e_zz, g_xy, g_xz, g_yz]`, engineering shear.
+- **Recurrent state and Newton-Raphson.** In the 2022 code the LSTM state advanced at every
+  Newton-Raphson iteration, and only the cell state `c` was restored when an increment was
+  restarted. `state_update: consistent` (default, deliberate change) advances the LSTM exactly
+  once per converged increment, as in the training sequences. `state_update: legacy` keeps the
+  2022 behaviour for reference; on the specimen it fails to converge at increment 77 with
+  fedoo 1.x, because the LSTM runs well past its 100-step training length.
+- The weights are read once into memory instead of from disk at every call (same numbers).
+- **Tangent options.** `tangent: network` (default) uses the tangent network, symmetric by
+  construction. `tangent: finite_difference` differentiates the stress network instead (always
+  consistent with the stress, no tangent weights needed). That tangent is unsymmetric, and fedoo
+  1.x assembles only one triangle of the stiffness in small strain (`assume_sym`), so the script
+  switches to full assembly for it.
+- **Newton-Raphson criterion.** The 2022 "Displacement" error was `max|correction| / max|total
+  displacement|`; fedoo 1.x normalises by the increment, which is much stricter for the same
+  tolerance (the thesis tolerance 0.05 then fails). `nr_criterion: LegacyDisplacement` (default,
+  `src/fe_lstm/fem/legacy_nr.py`) restores the 2022 definition; `Displacement` uses fedoo 1.x's.
 
 ## License
 

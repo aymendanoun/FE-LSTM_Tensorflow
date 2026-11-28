@@ -8,8 +8,8 @@ dist/
 .ipynb_checkpoints/
 
 # Large generated data and trained models (keep small references in reference_results/)
-data/
-models/
+/data/
+/models/
 *.h5
 *.keras
 *.npy
@@ -21,3 +21,4 @@ models/
 .DS_Store
 .vscode/
 .idea/
+/results/
