@@ -1,0 +1,64 @@
+# Database generation (stage 1) on the gyroid sheet example RVE. Same settings as database.yaml
+# except geometry.mesh_file and output.dir. Relative paths: relative to database_generation/.
+# "legacy" = value from legacy/database_generation/Create_DataBase_octet*.py,
+# legacy/fedoo_coupling/fedoo/libHomogen/Homog_path.py or the thesis RVE octet_surf.msh.
+seed: 0
+
+geometry:
+  # RVE mesh used by scripts/generate_database.py: periodic, linear tetrahedra, one material.
+  # Either a ready-made example (see rve_examples/README.md) or your own mesh built below.
+  # Check any mesh with: python scripts/check_rve.py <mesh>
+  mesh_file: rve_examples/gyroid_sheet.msh
+
+  # Your own RVE with microgen: edit this block, then (felstm-geometry env)
+  #   python scripts/build_rve.py
+  # and set mesh_file to build.output. kind = a builder of src/database_generation/geometry.py
+  # (octet_truss, tpms, spherical_pore, honeycomb); see rve_examples/examples.yaml for parameters.
+  build:
+    kind: octet_truss
+    params:
+      cell_size: 1.0            # legacy: unit cell
+      face_strut_radius: 0.10   # measured on octet_surf.msh
+      inner_strut_radius: 0.05  # measured on octet_surf.msh (0.04-0.05)
+    mesh_size: 0.1              # gmsh size; matches octet_surf.msh (4164 vs 4072 tet4, elastic
+                                # stiffness within 0.7%). Not mesh-converged: 0.05 gives ~8% stiffer.
+    # Optional mmg remeshing keeping periodicity (needs mmg3d_O3, scripts/install_mmg.sh), as in the
+    # microgen examples: removes the slivers of the gmsh mesh. Off here to reproduce the thesis mesh.
+    # remesh: {hmax: 0.1, hausd: 0.005}
+    output: data/rve/my_rve.msh
+
+material:                       # base material of the struts (simcoon umat), all legacy
+  umat: EPICP
+  props:                        # in the umat's order
+    E: 113800.0
+    nu: 0.342
+    alpha: 0.86e-5
+    sigma_Y: 1000.0
+    H: 1600.0
+    beta: 0.25
+
+loading:
+  # Deliberate change (2026-11-24): legacy used 10000 paths of 4 targets x 25 increments.
+  n_paths: 1000
+  n_segments: 2                 # random target strains per path (legacy N_Steps = 4)
+  increments_per_segment: 50    # -> 100 increments per path, the training sequence length
+  # Voigt order [Exx, Eyy, Ezz, Exy, Exz, Eyz], engineering shear strain.
+  # legacy: e11, e12, e22 drawn uniformly at each target in [0, max], the others zero.
+  active_components: [Exx, Eyy, Exy]
+  strain_min: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  strain_max: [0.05, 0.05, 0.0, 0.025, 0.0, 0.0]
+  # The thesis 3D networks (legacy/fedoo_coupling/weights_scaler_3D) were trained on all six
+  # components in [-0.05, 0.05] (normal) and [-0.025, 0.025] (shear); the script that generated
+  # that database is not in legacy/. To generate such a database instead:
+  #   active_components: [Exx, Eyy, Ezz, Exy, Exz, Eyz]
+  #   strain_min: [-0.05, -0.05, -0.05, -0.025, -0.025, -0.025]
+  #   strain_max: [0.05, 0.05, 0.05, 0.025, 0.025, 0.025]
+
+solver:
+  tol_nr: 0.05                  # legacy ToleranceNR
+
+parallel:
+  n_workers: null               # null = all CPU cores
+
+output:
+  dir: data/database_gyroid     # one CSV per path (not in git)

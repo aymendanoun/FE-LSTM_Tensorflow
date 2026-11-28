@@ -1,0 +1,69 @@
+# Example RVEs built with microgen (felstm-geometry env, mmg needed for `remesh`):
+#   python scripts/build_rve_examples.py            # all
+#   python scripts/build_rve_examples.py gyroid_sheet
+# Workflow of the microgen examples: geometry -> periodic gmsh mesh (mesh_size) -> mmg remesh
+# keeping periodicity (remesh: hmax = max edge length, hausd = max distance to the surface).
+# kind = a builder of src/database_generation/geometry.py (BUILDERS). Lengths: unit cells.
+octet_truss_thesis:
+  description: Octet truss of the thesis (face struts r=0.10, inner r=0.05), gmsh only, as legacy octet_surf.msh
+  kind: octet_truss
+  params: {cell_size: 1.0, face_strut_radius: 0.10, inner_strut_radius: 0.05}
+  mesh_size: 0.1
+  # not remeshed: reproduces the thesis mesh (element quality as in the thesis)
+
+octet_truss_thesis_remeshed:
+  description: Same geometry as octet_truss_thesis, remeshed with mmg
+  kind: octet_truss
+  params: {cell_size: 1.0, face_strut_radius: 0.10, inner_strut_radius: 0.05}
+  mesh_size: 0.1
+  remesh: {hmax: 0.1, hausd: 0.005}
+
+octet_truss_uniform:
+  description: Octet truss, all struts r=0.07
+  kind: octet_truss
+  params: {cell_size: 1.0, face_strut_radius: 0.07, inner_strut_radius: 0.07}
+  mesh_size: 0.07
+  remesh: {hmax: 0.07, hausd: 0.005}
+
+gyroid_sheet:
+  description: Gyroid TPMS sheet, solid fraction 0.25
+  kind: tpms
+  params: {surface: gyroid, part: sheet, solid_fraction: 0.25, cell_size: 1.0, resolution: 20}
+  mesh_size: 0.05
+  remesh: {hmax: 0.07, hausd: 0.005}
+
+neovius_sheet:
+  description: Neovius TPMS sheet, solid fraction 0.25
+  kind: tpms
+  params: {surface: neovius, part: sheet, solid_fraction: 0.25, cell_size: 1.0, resolution: 20}
+  mesh_size: 0.05
+  remesh: {hmax: 0.07, hausd: 0.005}
+
+schwarz_p_skeletal:
+  description: Schwarz P TPMS skeletal (lower) solid, solid fraction 0.30
+  kind: tpms
+  params: {surface: schwarzP, part: lower skeletal, solid_fraction: 0.30, cell_size: 1.0, resolution: 20}
+  mesh_size: 0.05
+  remesh: {hmax: 0.07, hausd: 0.005}
+
+schwarz_d_sheet:
+  description: Schwarz D (diamond) TPMS sheet, solid fraction 0.25 (voxel route, lower quality)
+  kind: tpms
+  # The CAD route cannot be meshed periodically by gmsh (microgen 1.3.1): voxel grid instead.
+  params: {surface: schwarzD, part: sheet, solid_fraction: 0.25, cell_size: 1.0, resolution: 30, method: grid}
+  mesh_size: null
+  remesh: {hmax: 0.07, hausd: 0.005}
+
+spherical_pore:
+  description: Cubic cell with a centred spherical pore of radius 0.4 (porosity 0.27)
+  kind: spherical_pore
+  params: {cell_size: 1.0, pore_radius: 0.4}
+  mesh_size: 0.08
+  remesh: {hmax: 0.08, hausd: 0.005}
+
+honeycomb:
+  description: Hexagonal honeycomb (side 0.5, wall 0.06), walls along x, periodic cell 0.5 x 0.866 x 1.5
+  kind: honeycomb
+  params: {side_length: 0.5, wall_thickness: 0.06, depth: 0.5}
+  mesh_size: 0.05
+  remesh: {hmax: 0.05, hausd: 0.005}
