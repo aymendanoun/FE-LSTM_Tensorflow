@@ -41,7 +41,7 @@ def build_material(cfg: dict, root: Path):
         return LSTMConstitutiveLaw(
             root / mat["weights_dir"],
             state_update=mat["state_update"],
-            tangent=mat.get("tangent", "network"),
+            tangent=mat.get("tangent", "finite_difference"),
         )
     if kind == "elastic":
         return fd.constitutivelaw.ElasticIsotrop(mat["E"], mat["nu"])

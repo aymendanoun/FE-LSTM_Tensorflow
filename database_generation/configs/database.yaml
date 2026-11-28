@@ -42,6 +42,9 @@ loading:
   n_segments: 2                 # random target strains per path (legacy N_Steps = 4)
   increments_per_segment: 50    # -> 100 increments per path, the training sequence length
   # Voigt order [Exx, Eyy, Ezz, Exy, Exz, Eyz], engineering shear strain.
+  # box  : legacy, below; mixed: all six components with +/- signs, for FE use (see
+  #        configs/database_gyroid_3d.yaml and README.md, "Loading on all six components").
+  sampling: box
   # legacy: e11, e12, e22 drawn uniformly at each target in [0, max], the others zero.
   active_components: [Exx, Eyy, Exy]
   strain_min: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

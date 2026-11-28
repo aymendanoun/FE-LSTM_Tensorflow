@@ -76,6 +76,34 @@ training sequence length). Deliberate change: the legacy paths had 4 targets x 2
 uniformly in `[0, 0.05]`, `[0, 0.05]` and `[0, 0.025]`, the other components stay zero. Path `i`
 uses the random stream `(seed, i)`: results do not depend on the number of workers.
 
+**Loading on all six components: `sampling: mixed`** (`configs/database_gyroid_3d.yaml`).
+Strategy for a reliable network from only 1000 paths:
+
+1. **Range from the FE application.** Strains are drawn in the normalized space
+   `u = strain / strain_scale`, with the thesis 3D ranges as scale (0.05 normal, 0.025 shear),
+   inside the ball `|u| <= max_norm = 1.25`. At the Gauss points of the FE specimen with holes
+   (thesis weights), `|u|` has a median of 0.29, a 99th percentile of 1.13 and a maximum of
+   1.64. A uniform box on six components (thesis) puts most targets near its corners
+   (`|u|` up to 2.45), strain states the FE never reaches, and few at small strains.
+2. **Every direction and amplitude.** Direction uniform on the 6D sphere (tension, compression,
+   shear and all their combinations equally), norm uniform in `[0, max_norm]` (elastic, onset of
+   yielding and large plastic strains equally represented).
+3. **Path types for the history.** 40% `proportional` (monotonic straight path over 100
+   increments: how the Gauss points of a monotonic FE test are loaded; in the specimen, the strain
+   direction at mid-run and at the end differ by cos = 0.998), 30% `reversal` (load, then go to
+   `c` x the first target, `c` in [-1, 0.5]: elastic unloading, reverse yielding), 30% `random`
+   (independent targets: non-proportional loading). With independent random targets only, two
+   6D directions are nearly orthogonal: unloading and reversal would be rare.
+4. **Even coverage with few samples.** The numbers come from a scrambled Sobol sequence
+   (`sampler: sobol`), which leaves fewer gaps than independent random draws at 1000 samples
+   and gives exactly the requested fraction of each path type, in the test set too.
+
+`paths.csv` in the output folder lists the type and targets of every path.
+
+Not changed: 2 segments x 50 increments (training sequence of 100 steps), the RVE, the material.
+Possible next improvements: more segments per path (cyclic loading) and varying increment
+sizes (the FE-LSTM is mildly step-size dependent, see `../CLAUDE.md`).
+
 **Micro-simulation** (`rve.py`): periodic boundary conditions with the macroscopic strain as
 global unknowns (`fd.constraint.PeriodicBC("small_strain")`, engineering shear), the node nearest
 the centre fixed, Newton-Raphson tolerance 0.05 with automatic time step. At the end of each
@@ -112,10 +140,11 @@ training stage. `config.json` stores the configuration used; failed paths, if an
 
 ## Open points
 
-- **Loading range.** The default reproduces the legacy script in `legacy/` (`Exx`, `Eyy`, `Exy`,
-  positive only). The thesis 3D networks were trained on all six components with negative values
-  too (`[-0.05, 0.05]` normal, `[-0.025, 0.025]` shear); that generation script is not in
-  `legacy/`. `configs/database.yaml` shows the settings for that range.
+- **Loading range.** `configs/database.yaml` reproduces the legacy script in `legacy/` (`Exx`,
+  `Eyy`, `Exy`, positive only): networks trained on it fail in 3D FE runs, where lateral strains
+  are negative. Use `sampling: mixed` (above) for FE. The thesis 3D networks were trained on all
+  six components (`[-0.05, 0.05]` normal, `[-0.025, 0.025]` shear, uniform box); that generation
+  script is not in `legacy/`.
 - **Legacy shear bound.** The legacy path files set `e12` through simcoon, which may have read it
   as the tensor component (engineering shear up to 0.05). The default uses engineering shear
   up to 0.025, the range of the thesis networks.

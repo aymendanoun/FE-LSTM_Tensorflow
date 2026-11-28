@@ -1,0 +1,69 @@
+# Database generation (stage 1) on the gyroid sheet example RVE, loading on all six strain
+# components ("mixed" sampling). Relative paths: relative to database_generation/.
+# "legacy" = value from legacy/database_generation/Create_DataBase_octet*.py,
+# legacy/fedoo_coupling/fedoo/libHomogen/Homog_path.py or the thesis RVE octet_surf.msh.
+seed: 0
+
+geometry:
+  # RVE mesh used by scripts/generate_database.py: periodic, linear tetrahedra, one material.
+  # Either a ready-made example (see rve_examples/README.md) or your own mesh built below.
+  # Check any mesh with: python scripts/check_rve.py <mesh>
+  mesh_file: rve_examples/gyroid_sheet.msh
+
+  # Your own RVE with microgen: edit this block, then (felstm-geometry env)
+  #   python scripts/build_rve.py
+  # and set mesh_file to build.output. kind = a builder of src/database_generation/geometry.py
+  # (octet_truss, tpms, spherical_pore, honeycomb); see rve_examples/examples.yaml for parameters.
+  build:
+    kind: octet_truss
+    params:
+      cell_size: 1.0            # legacy: unit cell
+      face_strut_radius: 0.10   # measured on octet_surf.msh
+      inner_strut_radius: 0.05  # measured on octet_surf.msh (0.04-0.05)
+    mesh_size: 0.1              # gmsh size; matches octet_surf.msh (4164 vs 4072 tet4, elastic
+                                # stiffness within 0.7%). Not mesh-converged: 0.05 gives ~8% stiffer.
+    # Optional mmg remeshing keeping periodicity (needs mmg3d_O3, scripts/install_mmg.sh), as in the
+    # microgen examples: removes the slivers of the gmsh mesh. Off here to reproduce the thesis mesh.
+    # remesh: {hmax: 0.1, hausd: 0.005}
+    output: data/rve/my_rve.msh
+
+material:                       # base material of the struts (simcoon umat), all legacy
+  umat: EPICP
+  props:                        # in the umat's order
+    E: 113800.0
+    nu: 0.342
+    alpha: 0.86e-5
+    sigma_Y: 1000.0
+    H: 1600.0
+    beta: 0.25
+
+loading:
+  # Deliberate change (2026-11-24): legacy used 10000 paths of 4 targets x 25 increments.
+  n_paths: 1000
+  n_segments: 2                 # target strains per path (legacy N_Steps = 4)
+  increments_per_segment: 50    # -> 100 increments per path, the training sequence length
+  # Voigt order [Exx, Eyy, Ezz, Exy, Exz, Eyz], engineering shear strain.
+  # box   : each active component drawn uniformly in [strain_min, strain_max] (legacy, see
+  #         database.yaml); mixed: all six components, see below and database_generation/README.md.
+  sampling: mixed
+  mixed:
+    # Strains are drawn in u = strain / strain_scale (thesis 3D ranges: +-0.05 normal,
+    # +-0.025 shear): direction uniform on the 6D sphere, norm |u| uniform in [0, max_norm].
+    # FE specimen with holes (thesis weights): |u| median 0.29, 99th percentile 1.13, max 1.64.
+    strain_scale: [0.05, 0.05, 0.05, 0.025, 0.025, 0.025]
+    max_norm: 1.25
+    # proportional: monotonic straight path (as at the Gauss points of a monotonic FE test);
+    # reversal: load, then go to c x the first target, c uniform in reversal_factor
+    #           (unloading, reverse loading); random: independent targets (non-proportional).
+    fractions: {proportional: 0.4, reversal: 0.3, random: 0.3}
+    reversal_factor: [-1.0, 0.5]
+    sampler: sobol              # sobol (scrambled, even coverage with few paths) | random
+
+solver:
+  tol_nr: 0.05                  # legacy ToleranceNR
+
+parallel:
+  n_workers: null               # null = all CPU cores
+
+output:
+  dir: data/database_gyroid_3d     # one CSV per path (not in git)

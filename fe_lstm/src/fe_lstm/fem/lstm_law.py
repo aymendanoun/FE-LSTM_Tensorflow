@@ -53,6 +53,12 @@ _DIAG = [(i, i) for i in range(6)]
 _UPPER = [(i, j) for i in range(6) for j in range(i + 1, 6)]
 TANGENT_INDEX = _DIAG + _UPPER
 
+# Names of the inputs / outputs the law expects, in this order (training stage conventions);
+# checked against architecture.json when the network was exported by the training stage.
+STRAIN_NAMES = ["Exx", "Eyy", "Ezz", "Exy", "Exz", "Eyz"]
+STRESS_NAMES = ["Sxx", "Syy", "Szz", "Sxy", "Sxz", "Syz"]
+TANGENT_NAMES = [f"C{i + 1}{i + 1}" for i in range(6)] + [f"C{i + 1}{j + 1}_m" for i, j in _UPPER]
+
 _STATE_MODES = ("legacy", "consistent")
 _TANGENT_MODES = ("network", "finite_difference")
 FD_STEP = 1e-6  # strain perturbation for the finite-difference tangent
@@ -66,6 +72,18 @@ def tangent_from_vector(y: np.ndarray) -> np.ndarray:
         lt[i, j] = y[:, k]
         lt[j, i] = y[:, k]
     return lt
+
+
+def _check_names(net, outputs: list[str], kind: str):
+    """Inputs / outputs order of a network exported with architecture.json (no check otherwise)."""
+    arch = getattr(net, "architecture", None)
+    if not arch:
+        return
+    if list(arch["inputs"]) != STRAIN_NAMES or list(arch["outputs"]) != outputs:
+        raise ValueError(
+            f"The {kind} network maps {arch['inputs']} -> {arch['outputs']}; the law needs "
+            f"{STRAIN_NAMES} -> {outputs} (see training/configs/training.yaml)."
+        )
 
 
 class LSTMConstitutiveLaw(Mechanical3D):
@@ -83,11 +101,13 @@ class LSTMConstitutiveLaw(Mechanical3D):
     state_update : {"consistent", "legacy"}
         How the recurrent state is handled across Newton-Raphson iterations
         (see module docstring). Default "consistent".
-    tangent : {"network", "finite_difference"}
-        ``"network"`` (thesis): tangent matrix predicted by the tangent network.
-        ``"finite_difference"``: tangent computed from the stress network by forward finite
-        differences, always consistent with the predicted stress (6 extra stress evaluations
-        per update, the tangent network is not needed). Useful to diagnose convergence issues.
+    tangent : {"finite_difference", "network"}
+        ``"finite_difference"`` (default since 2026-11-28): tangent computed from the stress
+        network by forward finite differences. It is the derivative of the stress the solver
+        uses, so Newton-Raphson converges to the same solution with fewer failures; costs 6
+        extra stress evaluations per update; ``weights_scaler_Lt/`` is not needed.
+        ``"network"`` (thesis): tangent matrix predicted by the separately trained tangent
+        network. The converged FE solution depends only on the stress network either way.
     name : str
         Name of the constitutive law.
     """
@@ -96,7 +116,7 @@ class LSTMConstitutiveLaw(Mechanical3D):
         self,
         weights_dir: str | Path,
         state_update: str = "consistent",
-        tangent: str = "network",
+        tangent: str = "finite_difference",
         name: str = "",
     ):
         weights_dir = Path(weights_dir)
@@ -108,10 +128,16 @@ class LSTMConstitutiveLaw(Mechanical3D):
 
     @classmethod
     def from_networks(
-        cls, stress_net, tangent_net=None, state_update: str = "consistent", tangent: str = "network", name: str = ""
+        cls, stress_net, tangent_net=None, state_update: str = "consistent", tangent: str | None = None,
+        name: str = "",
     ):
         """Build the law from network objects (``LSTMSurrogate`` or any object with the same
-        ``n_inputs``, ``n_outputs``, ``n_lstm_layers``, ``zero_state`` and ``step``)."""
+        ``n_inputs``, ``n_outputs``, ``n_lstm_layers``, ``zero_state`` and ``step``).
+
+        ``tangent=None`` uses ``"network"`` when a tangent network is given, else
+        ``"finite_difference"``."""
+        if tangent is None:
+            tangent = "network" if tangent_net is not None else "finite_difference"
         law = cls.__new__(cls)
         law._setup(stress_net, tangent_net, state_update, tangent, name)
         return law
@@ -128,6 +154,9 @@ class LSTMConstitutiveLaw(Mechanical3D):
             tangent_net is None or tangent_net.n_inputs != 6 or tangent_net.n_outputs != 21
         ):
             raise ValueError("The tangent network must map 6 strain components to 21 terms.")
+        _check_names(stress_net, STRESS_NAMES, "stress")
+        if tangent == "network":
+            _check_names(tangent_net, TANGENT_NAMES, "tangent")
         self.stress_net = stress_net
         self.tangent_net = tangent_net if tangent == "network" else None
         self.tangent = tangent

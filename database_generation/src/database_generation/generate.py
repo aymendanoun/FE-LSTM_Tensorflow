@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 
 from database_generation import io
-from database_generation.loading import path_rng, random_targets
+from database_generation.loading import mixed_path_targets, path_rng, random_targets
 
 _WORKER = {}
 _THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS")
@@ -31,10 +31,26 @@ def material_props(cfg_material: dict) -> np.ndarray:
 
 def path_targets(cfg: dict, path_index: int) -> np.ndarray:
     lo = cfg["loading"]
+    if lo.get("sampling", "box") == "mixed":
+        return mixed_path_targets(cfg["seed"], path_index, lo["n_paths"], lo["n_segments"], lo["mixed"])[0]
+    if lo.get("sampling", "box") != "box":
+        raise ValueError(f"loading.sampling must be 'box' or 'mixed', got {lo['sampling']!r}")
     return random_targets(
         path_rng(cfg["seed"], path_index), lo["n_segments"], lo["active_components"],
         lo["strain_min"], lo["strain_max"],
     )
+
+
+def write_path_list(cfg: dict, out_file: Path):
+    """Type and targets of every path ("mixed" sampling), to analyse the database."""
+    lo = cfg["loading"]
+    rows = []
+    for i in range(lo["n_paths"]):
+        targets, kind = mixed_path_targets(cfg["seed"], i, lo["n_paths"], lo["n_segments"], lo["mixed"])
+        rows.append([i, kind] + [f"{v:.6g}" for v in targets.ravel()])
+    header = ["path", "type"] + [f"T{k + 1}_{c}" for k in range(lo["n_segments"])
+                                 for c in ("Exx", "Eyy", "Ezz", "Exy", "Exz", "Eyz")]
+    out_file.write_text("\n".join(",".join(map(str, r)) for r in [header] + rows) + "\n")
 
 
 def _init_worker(cfg: dict, mesh_file: str):
@@ -79,6 +95,8 @@ def generate(cfg: dict, stage_dir: str | Path, path_indices=None, n_workers: int
                 f"(see {cfg_file}). Use another output dir, or delete it to start again."
             )
     cfg_file.write_text(json.dumps(cfg, indent=2))
+    if cfg["loading"].get("sampling", "box") == "mixed":
+        write_path_list(cfg, out_dir / "paths.csv")
 
     if path_indices is None:
         path_indices = range(cfg["loading"]["n_paths"])

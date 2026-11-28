@@ -75,3 +75,62 @@ def test_matches_tensorflow_keras(weights_dir):
     y_keras = model.predict((x - net.x_min) / (net.x_max - net.x_min), verbose=0)
     y_keras = y_keras * (net.y_max - net.y_min) + net.y_min
     np.testing.assert_allclose(net.predict_sequence(x), y_keras, rtol=1e-4, atol=1e-4)
+
+
+def _write_general_network(folder, rng, lstm_units, dense_units, acts, n_in=6, n_out=6, arch=True):
+    """Weights of an n-LSTM + m-Dense network in the training-stage export format."""
+    import json
+
+    folder.mkdir(parents=True, exist_ok=True)
+    n_prev = n_in
+    for k, u in enumerate(lstm_units, 1):
+        np.savez(folder / f"LSTM_layer_{k}.npz", **{
+            f"{w}_{g}": rng.normal(0, 0.3, shape) for g in "ifco"
+            for w, shape in (("W", (n_prev, u)), ("U", (u, u)), ("b", (u,)))
+        })
+        n_prev = u
+    for k, u in enumerate(list(dense_units) + [n_out], len(lstm_units) + 1):
+        np.savez(folder / f"Dense_layer_{k}.npz", W=rng.normal(0, 0.3, (n_prev, u)), b=rng.normal(0, 0.3, u))
+        n_prev = u
+    np.savez(folder / "scaling_stress.npz", scalingX_min=np.zeros(n_in), scalingX_max=0.05 * np.ones(n_in),
+             scalingY_min=-np.ones(n_out), scalingY_max=np.ones(n_out))
+    if arch:
+        (folder / "architecture.json").write_text(json.dumps({
+            "inputs": ["Exx", "Eyy", "Ezz", "Exy", "Exz", "Eyz"], "outputs": ["Sxx", "Syy", "Szz", "Sxy", "Sxz", "Syz"],
+            "lstm_units": list(lstm_units), "dense_units": list(dense_units),
+            "dense_activations": list(acts[:-1]), "output_activation": acts[-1]}))
+
+
+def test_general_architecture_matches_keras(tmp_path):
+    """3 LSTM layers, 2 hidden Dense layers (tanh, elu), softplus output, read from architecture.json."""
+    keras = pytest.importorskip("tensorflow").keras
+    acts = ["tanh", "elu", "softplus"]
+    _write_general_network(tmp_path, np.random.default_rng(5), [7, 9, 5], [8, 4], acts)
+    net = LSTMSurrogate(tmp_path, "scaling_stress.npz")
+    assert net.n_lstm_layers == 3 and net.units == [7, 9, 5] and net.activations == acts
+    model = keras.Sequential(
+        [keras.Input((None, 6))]
+        + [keras.layers.LSTM(u, return_sequences=True) for u in (7, 9, 5)]
+        + [keras.layers.Dense(u, activation=a) for u, a in zip((8, 4, 6), acts)]
+    )
+    for keras_layer, layer in zip(model.layers[:3], net.lstm_layers):
+        keras_layer.set_weights([np.concatenate([layer[f"{k}_{g}"] for g in "ifco"], axis=-1) for k in "WUb"])
+    for keras_layer, layer in zip(model.layers[3:], net.dense_layers):
+        keras_layer.set_weights([layer["W"], layer["b"]])
+    x = np.random.default_rng(6).uniform(0, 0.05, (3, 12, 6))
+    y_keras = model.predict((x - net.x_min) / (net.x_max - net.x_min), verbose=0)
+    y_keras = y_keras * (net.y_max - net.y_min) + net.y_min
+    np.testing.assert_allclose(net.predict_sequence(x), y_keras, rtol=1e-4, atol=1e-4)
+
+
+def test_layer_count_without_architecture_file(tmp_path):
+    """Thesis-style export (no architecture.json): relu hidden layers, linear output."""
+    _write_general_network(tmp_path, np.random.default_rng(7), [5], [6, 6], None, arch=False)
+    net = LSTMSurrogate(tmp_path, "scaling_stress.npz")
+    assert net.n_lstm_layers == 1 and net.activations == ["relu", "relu", "linear"]
+
+
+def test_unsupported_activation_rejected(tmp_path):
+    _write_general_network(tmp_path, np.random.default_rng(8), [5], [6], ["gelu", "linear"])
+    with pytest.raises(ValueError, match="gelu"):
+        LSTMSurrogate(tmp_path, "scaling_stress.npz")

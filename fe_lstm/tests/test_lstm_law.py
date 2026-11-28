@@ -43,7 +43,7 @@ class StubAssembly:
 
 
 def make(weights_dir, mode, n_points=4):
-    law = LSTMConstitutiveLaw(weights_dir, state_update=mode)
+    law = LSTMConstitutiveLaw(weights_dir, state_update=mode, tangent="network")
     asm = StubAssembly(n_points)
     law.initialize(asm, None)
     asm.commit()
@@ -153,7 +153,7 @@ def test_fedoo_wiring_matches_elastic_isotrop(mode):
 
 
 def test_runs_in_fedoo_with_random_networks(weights_dir):
-    law = LSTMConstitutiveLaw(weights_dir, state_update="consistent")
+    law = LSTMConstitutiveLaw(weights_dir, state_update="consistent", tangent="network")
     fd.ModelingSpace("3D")
     mesh = fd.mesh.box_mesh(nx=3, ny=3, nz=3, elm_type="hex8")
     asm = fd.Assembly.create(fd.weakform.StressEquilibrium(law, nlgeom=False), mesh)
@@ -181,4 +181,36 @@ def test_finite_difference_tangent_matches_linear_map():
 
 
 def test_network_tangent_is_flagged_symmetric(weights_dir):
-    assert LSTMConstitutiveLaw(weights_dir).symmetric_tangent is True
+    assert LSTMConstitutiveLaw(weights_dir, tangent="network").symmetric_tangent is True
+
+
+def test_default_tangent_is_finite_difference_without_tangent_network(weights_dir):
+    import shutil
+
+    shutil.rmtree(weights_dir / "weights_scaler_Lt")  # not needed by the default
+    law = LSTMConstitutiveLaw(weights_dir)
+    assert law.tangent == "finite_difference" and law.tangent_net is None
+    assert law.symmetric_tangent is False
+
+
+def test_tangent_names_follow_training_labels():
+    from fe_lstm.fem.lstm_law import TANGENT_NAMES
+
+    assert TANGENT_NAMES[:7] == ["C11", "C22", "C33", "C44", "C55", "C66", "C12_m"]
+    assert TANGENT_NAMES[-1] == "C56_m" and len(TANGENT_NAMES) == 21
+
+
+def test_rejects_network_with_other_outputs(weights_dir):
+    """A network exported with architecture.json must map the 6 strains to the expected outputs."""
+    import json
+
+    folder = weights_dir / "weights_scaler_stress"
+    (folder / "architecture.json").write_text(json.dumps({
+        "inputs": ["Exx", "Eyy", "Ezz", "Exy", "Exz", "Eyz"], "outputs": ["Sxx", "Syy", "Sxy", "Szz", "Sxz", "Syz"],
+        "lstm_units": [50, 50], "dense_units": [50], "dense_activations": ["relu"], "output_activation": "linear"}))
+    with pytest.raises(ValueError, match="stress network maps"):
+        LSTMConstitutiveLaw(weights_dir)
+    arch = json.loads((folder / "architecture.json").read_text())
+    arch["outputs"] = ["Sxx", "Syy", "Szz", "Sxy", "Sxz", "Syz"]
+    (folder / "architecture.json").write_text(json.dumps(arch))
+    LSTMConstitutiveLaw(weights_dir)  # accepted

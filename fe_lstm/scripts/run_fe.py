@@ -7,7 +7,7 @@ Usage (from the fe_lstm/ folder):
     python scripts/run_fe.py --material epicp                # simcoon reference instead of LSTM
     python scripts/run_fe.py --weights path/to/weights_scaler_3D
     python scripts/run_fe.py --state-update legacy           # thesis behaviour (reference only)
-    python scripts/run_fe.py --tangent finite_difference     # tangent from the stress network
+    python scripts/run_fe.py --tangent network               # thesis tangent network (default: finite differences)
 """
 
 import argparse
@@ -24,7 +24,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--config", default=ROOT / "configs/specimen_with_holes_tensile.yaml")
     parser.add_argument("--material", choices=["lstm", "elastic", "eliso", "epicp"])
-    parser.add_argument("--weights", help="folder with weights_scaler_stress/ and weights_scaler_Lt/")
+    parser.add_argument("--weights", help="folder with weights_scaler_stress/ (and weights_scaler_Lt/ for --tangent network)")
     parser.add_argument("--state-update", choices=["legacy", "consistent"])
     parser.add_argument("--tangent", choices=["network", "finite_difference"])
     parser.add_argument("--update-dt", action="store_true", help="let the solver cut the time step")

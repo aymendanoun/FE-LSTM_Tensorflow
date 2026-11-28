@@ -14,8 +14,9 @@ Each folder has its own `src/<package>/`, `scripts/`, `configs/`, `tests/`, `ref
    (https://github.com/3MAH/microgen), fedoo 1.x + simcoon EPICP periodic strain-driven
    micro-simulations -> `data/database/path_*.csv` (strain, stress, full 6x6 tangent C11..C66
    per increment, legacy column names). Implemented 2026-11-24; full database not generated yet.
-2. `training/` (package `lstm_training`): train stress and tangent LSTMs (Keras 3) -> `.npz`
-   weights in `models/weights_scaler_3D/` (thesis export format). Skeleton only.
+2. `training/` (package `lstm_training`): train the stress LSTM (tangent LSTM optional) (Keras 3) -> `.npz`
+   weights in `models/weights_scaler_3D/` (thesis export format + `architecture.json`).
+   Implemented 2026-11-25 (see Stage 2 notes).
 3. `fe_lstm/` (package `fe_lstm`): the LSTMs as fedoo 1.x constitutive law. Ported and working.
 Paths in each stage's configs are relative to that stage folder (e.g. `../legacy/...`).
 Root `pytest.ini` runs the three test folders; test file and helper module names must be unique
@@ -48,6 +49,58 @@ across stages (never `from conftest import` in a new stage: use a uniquely named
   Mac, 10 workers, one BLAS thread each).
 Aymen's plan: rebuild the project from stage 1 with microgen, not port the legacy generation.
 
+## Stage 2 notes (2026-11-25)
+- `scripts/train.py --config configs/training[_gyroid].yaml [--networks stress] [--epochs N]`.
+  Configurable: LSTM layers/units, hidden Dense layers + activations, output activation,
+  optimizer (name or dict), loss (Keras name or `nmse`), epochs, batch size, validation split,
+  test fraction, keep-best monitor, early stopping, ReduceLROnPlateau; per-network overrides.
+- Defaults = legacy (2x LSTM 50, Dense 50 relu, linear, adam, mse, 1000 epochs, batch 32,
+  val split 0.2, MinMax fitted on all paths, test = last paths). Deliberate changes: best epoch
+  kept in memory (no checkpoints); constant columns exported with max = min + 1 (sklearn unit
+  scale; the plain max would divide by zero in fe_lstm); `Cij_m` computed from the full tangent.
+- fe_lstm `LSTMSurrogate` now reads any number of LSTM/Dense layers (file names) and the
+  activations from `architecture.json` (thesis weights without it: relu hidden, linear output);
+  `LSTMConstitutiveLaw` checks input/output names when the file exists. Supported activations
+  must stay in sync in `training/.../model.py`, `export.py` and `fe_lstm/.../numpy_lstm.py`.
+- Gyroid 2D database (`database_generation/data/database_gyroid`, 1000 paths, 539 min): only
+  Exx, Eyy, Exy >= 0. Networks trained on it (training/models/gyroid/, stress test NMSE 0.043%,
+  tangent 0.54%) make the FE specimen fail at increment 1 (lateral strains < 0 never seen).
+- Loading range chosen (Aymen, 2026-11-25): all six components with +/-. New stage 1 option
+  `loading.sampling: mixed` (`configs/database_gyroid_3d.yaml`): normalized ball |strain/scale|
+  <= 1.25 (scale 0.05 normal, 0.025 shear; FE specimen Gauss points: p99 1.13), uniform direction
+  and norm, 40% proportional / 30% reversal (c in [-1, 0.5]) / 30% random paths, scrambled Sobol.
+  `sampling: box` (default) = legacy. Full run launched 2026-11-25 (~400 s per path, 10 workers,
+  ~11.5 h) -> `data/database_gyroid_3d`; then train with `training/configs/training_gyroid_3d.yaml`.
+- Gyroid 3D (2026-11-27): database done (1000/1000 paths, 541 min). Networks in
+  training/models/gyroid_3d/: stress test NMSE 1.03% (R2 0.976-0.992), tangent 0.48%. FE specimen:
+  `--tangent network` fails at increment 1 (Err 0.079 > 0.05); `finite_difference` converges (100
+  incr., 2 NR each, 134 s; results in fe_lstm/results/gyroid_3d_tensile/). Problem: the stress
+  network is ~7x too soft over the first increments of a path (test RMSE at steps 1-4 ~ the stress
+  itself; force at FE increment 1 ~30x below the linear trend) and weak late in reversals (RMSE
+  12-17 MPa at steps 76-100). Cause: plain MSE on scaled outputs barely weights small early
+  stresses. Proposed next: loss weighted toward early increments / relative error, or more paths.
+- Increment-weighted loss (2026-11-28, deliberate change, off by default): `training.time_weights:
+  {power, floor}`, w_t ~ (r_max / max(r_t, floor r_max))^power, monitor val_loss;
+  `configs/training_gyroid_3d_weighted.yaml` (power 2, floor 0.05) -> models/gyroid_3d_weighted/.
+  metrics.json now has rmse_by_increment. Result vs unweighted: test NMSE 0.85% (1.03%); RMSE at
+  increments 2-11 2-3x lower, late increments similar (14 vs 17 MPa at 100); increment 1 still
+  wrong (median rel. err 84%; the database is exactly linear there, C11 16174, C44 4952: the
+  network, starting from a zero state, does not resolve such small inputs). FE specimen (FD
+  tangent, converges, 2 NR/incr): force at incr. 1 now 70% of the linear trend (was 3%), incr. 2
+  78%; final force 7.71 (7.96). Results in fe_lstm/results/gyroid_3d_weighted_tensile/.
+  Decision (Aymen, 2026-11-28): accept the first-increment error; do not add an elastic term or
+  tune the floor for it.
+- **Unweighted loss is the default training method** (Aymen, 2026-11-28): `time_weights: null` in
+  training.yaml, training_gyroid.yaml, training_gyroid_3d.yaml. Increment weighting only via
+  training_gyroid_3d_weighted.yaml or when explicitly asked.
+
+## Tangent decision (Aymen, 2026-11-28)
+- fe_lstm default `tangent: finite_difference` (law, specimen.py, config); training trains only the
+  stress network by default (`networks.tangent.enabled: false` in all training configs). Reason:
+  the converged FE solution depends only on the stress network; the FD tangent is always consistent
+  with it, a separately trained tangent network is not. `network` stays available (thesis).
+  Later: analytic Jacobian of the LSTM step (next step 3) to replace finite differences.
+
 ## Port status (end of session 2026-11-19, transcript in docs/claude_sessions/)
 - Done: FE coupling, in `fe_lstm/`: `src/fe_lstm/model/numpy_lstm.py` (NumPy LSTM inference,
   tested against Keras 3), `src/fe_lstm/fem/lstm_law.py` (fedoo 1.x law),
@@ -55,8 +108,9 @@ Aymen's plan: rebuild the project from stage 1 with microgen, not port the legac
   `scripts/run_fe.py` + `configs/specimen_with_holes_tensile.yaml`, `scripts/plot_results.py`,
   `scripts/compare_tangents.py`.
 - Law options: `state_update` = "consistent" (default: one step per converged increment) |
-  "legacy" (LSTM steps at every Newton iteration, thesis code, reference only); `tangent` = "network" (tangent LSTM, 21
-  terms, symmetric) | "finite_difference" (derivative of the stress LSTM, unsymmetric).
+  "legacy" (LSTM steps at every Newton iteration, thesis code, reference only); `tangent` =
+  "finite_difference" (default since 2026-11-28: derivative of the stress LSTM, unsymmetric) |
+  "network" (thesis tangent LSTM, 21 terms, symmetric).
 - fedoo 1.x assembles one triangle of K in small strain (`assume_sym=True`): unsymmetric
   tangents need `weakform.assembly_options["assume_sym"] = False` (done in specimen.py).
 - Results so far (thesis stress weights, on Aymen's Mac and here):
@@ -84,9 +138,10 @@ Aymen's plan: rebuild the project from stage 1 with microgen, not port the legac
      fedoo needing fewer Newton iterations per increment?).
   2. Compare the force-displacement curve / stress fields with the thesis figures.
   3. Analytic (exact) Jacobian of the LSTM step to replace finite differences.
-  4. Port training to Keras 3 / pandas 2 (`DataFrame.append` removed).
-  5. (done 2026-11-24) Database generation on microgen + fedoo 1.x. Next: choose the loading
-     range, generate the database, then port training (step 4) on it.
+  4. (done 2026-11-25) Training ported to Keras 3 / pandas 2 in `training/`.
+  5. (done 2026-11-24) Database generation on microgen + fedoo 1.x. Loading range chosen
+     2026-11-25 (mixed sampling, above). Trained and FE-run 2026-11-27 (Stage 2 notes): next,
+     improve the stress network's early increments.
 - Trained weights are not in git; tests use synthetic weights (`fe_lstm/tests/conftest.py`).
 
 ## Rules
@@ -100,6 +155,8 @@ Aymen's plan: rebuild the project from stage 1 with microgen, not port the legac
 - Hyperparameters and paths belong in `<stage>/configs/*.yaml`, not hard-coded.
 - **Always use `state_update: consistent`** (Aymen's decision, 2026-11-23) for FE runs, configs,
   scripts and new code. Use `legacy` only when explicitly asked to reproduce the thesis code.
+- **Default to `tangent: finite_difference`** and stress-network-only training (Aymen's decision,
+  2026-11-28). Use the tangent network only when explicitly asked.
 
 ## Environments
 - `felstm` (`environment.yml`): latest fedoo (1.x), simcoon (2.x), TensorFlow 2.21 (Keras 3), Python 3.12

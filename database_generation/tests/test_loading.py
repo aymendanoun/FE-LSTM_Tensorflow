@@ -50,3 +50,65 @@ def test_bad_inputs():
         random_targets(rng, 4, ["Exx", "Bad"], [0] * 6, [1] * 6)
     with pytest.raises(ValueError):
         random_targets(rng, 4, ["Exx"], [1] * 6, [0] * 6)
+
+
+# ------------------------------------------------------------------------- "mixed" sampling
+def _mixed_cfg(cfg, sampler="sobol"):
+    import copy
+
+    c = copy.deepcopy(cfg)
+    c["loading"]["sampling"] = "mixed"
+    c["loading"]["n_segments"] = 2
+    c["loading"]["mixed"] = {"strain_scale": [0.05, 0.05, 0.05, 0.025, 0.025, 0.025], "max_norm": 1.25,
+                             "fractions": {"proportional": 0.4, "reversal": 0.3, "random": 0.3},
+                             "reversal_factor": [-1.0, 0.5], "sampler": sampler}
+    return c
+
+
+@pytest.mark.parametrize("sampler", ["sobol", "random"])
+def test_mixed_sampling(cfg, sampler):
+    from database_generation.loading import mixed_path_targets
+
+    c = _mixed_cfg(cfg, sampler)
+    lo = c["loading"]
+    scale = np.array(lo["mixed"]["strain_scale"])
+    out = [mixed_path_targets(c["seed"], i, lo["n_paths"], 2, lo["mixed"]) for i in range(lo["n_paths"])]
+    t = np.array([o[0] for o in out])
+    kinds = np.array([o[1] for o in out])
+    np.testing.assert_array_equal(path_targets(c, 5), t[5])
+    assert t.shape == (lo["n_paths"], 2, 6)
+    assert np.all(np.linalg.norm(t / scale, axis=2) <= 1.25 + 1e-12)
+    assert np.all(np.abs((t[:, 0] > 0).mean(0) - 0.5) < 0.06)  # both signs, every component
+    frac = {k: (kinds == k).mean() for k in ("proportional", "reversal", "random")}
+    tol = 0.01 if sampler == "sobol" else 0.05
+    assert abs(frac["proportional"] - 0.4) < tol and abs(frac["reversal"] - 0.3) < tol
+    p = t[kinds == "proportional"]
+    np.testing.assert_allclose(p[:, 1], 2 * p[:, 0])  # monotonic straight path
+    r = t[kinds == "reversal"]
+    c_fac = np.einsum("ij,ij->i", r[:, 1], r[:, 0]) / np.einsum("ij,ij->i", r[:, 0], r[:, 0])
+    assert c_fac.min() >= -1 - 1e-9 and c_fac.max() <= 0.5 + 1e-9
+    np.testing.assert_allclose(r[:, 1], c_fac[:, None] * r[:, 0], atol=1e-12)
+
+
+def test_mixed_sampling_errors(cfg):
+    from database_generation.loading import mixed_path_targets
+
+    c = _mixed_cfg(cfg)
+    with pytest.raises(IndexError):
+        mixed_path_targets(0, c["loading"]["n_paths"], c["loading"]["n_paths"], 2, c["loading"]["mixed"])
+    c["loading"]["mixed"]["fractions"] = {"cyclic": 1.0}
+    with pytest.raises(ValueError):
+        path_targets(c, 0)
+    c["loading"]["sampling"] = "grid"
+    with pytest.raises(ValueError, match="box"):
+        path_targets(c, 0)
+
+
+def test_gyroid_3d_config_is_mixed():
+    import yaml
+
+    from dbgen_paths import STAGE
+
+    c = yaml.safe_load((STAGE / "configs" / "database_gyroid_3d.yaml").read_text())
+    assert c["loading"]["sampling"] == "mixed" and c["output"]["dir"] == "data/database_gyroid_3d"
+    assert path_targets(c, 0).shape == (2, 6)

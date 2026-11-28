@@ -1,0 +1,70 @@
+# Training on the gyroid database loaded on all six strain components
+# (database_generation/configs/database_gyroid_3d.yaml), with the loss weighted per increment so
+# that the first increments of a path (small stresses) count as much, in relative terms, as the
+# later ones. Otherwise the same settings as training_gyroid_3d.yaml.
+# Relative paths are relative to the training/ folder.
+# Defaults reproduce legacy/training/LSTM_model_Training_{stress,tangent}.py ("legacy" below).
+seed: 0
+
+data:
+  database_dir: ../database_generation/data/database_gyroid_3d   # output of stage 1 (path_*.csv)
+  n_paths: null             # null = every path_*.csv of database_dir (legacy: 10000)
+  test_fraction: 0.1        # last paths held out for the final test (legacy: tangent 0.1, stress 0.01)
+  validation_split: 0.2     # Keras validation_split: last 20% of the training paths (legacy)
+  # Inputs and outputs are MinMax-scaled to [0, 1] (legacy: sklearn MinMaxScaler fitted on all
+  # paths). A constant column (e.g. Ezz = 0 in a 2D loading) is left unscaled, as sklearn does.
+
+# Default architecture of both networks; a network can override any key in its own `model:`.
+#   LSTM(lstm_units[0]) -> ... -> LSTM(lstm_units[-1])
+#   -> Dense(dense_units[0], dense_activations[0]) -> ... -> Dense(n_outputs, output_activation)
+model:
+  lstm_units: [50, 50]          # one entry per LSTM layer (legacy: 2 layers of 50)
+  dense_units: [50]             # hidden Dense layers ([] = LSTM straight to the output layer)
+  dense_activations: [relu]     # one per hidden Dense layer (legacy: relu)
+  output_activation: linear     # legacy
+  # Activations usable by the fe_lstm law (NumPy inference): linear, relu, tanh, sigmoid, elu,
+  # selu, softplus, softsign, silu (= swish), leaky_relu (slope 0.2, the Keras 3 default).
+
+# Default training settings of both networks; a network can override any key in `training:`.
+training:
+  optimizer: adam               # name, or {name: adam, learning_rate: 1.0e-3, ...} (any Keras optimizer)
+  loss: mse                     # any Keras loss name (mse, mae, huber, log_cosh, ...) or nmse
+                                # (percentage normalized MSE, the legacy metric)
+  epochs: 1000                  # legacy
+  batch_size: 32                # legacy: Keras default
+  shuffle: true                 # legacy
+  keep_best: true               # export the weights of the epoch with the lowest `monitor` (legacy)
+  monitor: val_loss             # the weighted loss (val_nmse is unweighted)
+  time_weights: {power: 2.0, floor: 0.05}   # loss weight per increment:
+                                # w_t ~ (r_max / max(r_t, floor r_max))^power, r_t = RMS output at
+                                # increment t (null: plain loss, legacy). Monitor val_loss with it.
+  early_stopping_patience: null # stop after this many epochs without improvement (null: never)
+  reduce_lr: null               # e.g. {factor: 0.5, patience: 50, min_lr: 1.0e-5} (Keras ReduceLROnPlateau)
+  verbose: 2                    # Keras fit verbosity: 0 silent, 1 progress bar, 2 one line per epoch
+
+networks:
+  stress:
+    enabled: true
+    folder: weights_scaler_stress   # read by fe_lstm (do not rename)
+    scaling_name: stress            # -> scaling_stress.npz
+    inputs: [Exx, Eyy, Ezz, Exy, Exz, Eyz]          # legacy; the fe_lstm law needs these 6, in this order
+    outputs: [Sxx, Syy, Szz, Sxy, Sxz, Syz]         # legacy
+  tangent:
+    # Off by default since 2026-11-28: fe_lstm uses the finite-difference tangent of the stress
+    # network. Train it (--networks tangent, or true here) only for fe_lstm --tangent network.
+    enabled: false
+    folder: weights_scaler_Lt
+    scaling_name: Lt
+    inputs: [Exx, Eyy, Ezz, Exy, Exz, Eyz]
+    # Legacy order: 6 diagonal terms, then the upper triangle row by row. Cij_m = (Cij + Cji) / 2.
+    outputs: [C11, C22, C33, C44, C55, C66, C12_m, C13_m, C14_m, C15_m, C16_m,
+              C23_m, C24_m, C25_m, C26_m, C34_m, C35_m, C36_m, C45_m, C46_m, C56_m]
+    # Example of per-network overrides:
+    # model: {lstm_units: [64, 64, 64], dense_units: [64, 32], dense_activations: [tanh, tanh]}
+    # training: {epochs: 500, optimizer: {name: adam, learning_rate: 5.0e-4}}
+
+output:
+  # <dir>/<folder>/: LSTM_layer_k.npz, Dense_layer_k.npz, scaling_<name>.npz, architecture.json
+  # (read by fe_lstm: set material.weights_dir to ../training/<dir>), plus history.csv,
+  # history.png, metrics.json, test_predictions.npz and model.keras.
+  dir: models/gyroid_3d_weighted/weights_scaler_3D   # not in git
